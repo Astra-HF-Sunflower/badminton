@@ -124,6 +124,8 @@ export class Game implements Scene {
   private catchLock: [number, number] = [0, 0];
   /** 超级反弹的「歪一下」计时 */
   private chaosTurn = 0;
+  /** 当前蓄力档位（0~4） */
+  private chargeStage = 0;
   private readonly baseSpeedMul: [number, number] = [1, 1];
 
   constructor(
@@ -531,9 +533,21 @@ export class Game implements Scene {
   private chargeFx(p: Player, dt: number) {
     if (!p.charge) {
       this.chargeMaxed = false;
+      this.chargeStage = 0;
       return;
     }
     const r = p.chargeRatio;
+    // 蓄力分档：每一档力度明显不同，越往上越离谱
+    const stage = r >= 0.98 ? 4 : r >= 0.75 ? 3 : r >= 0.5 ? 2 : r >= 0.25 ? 1 : 0;
+    if (stage > this.chargeStage && stage > 0) {
+      this.chargeStage = stage;
+      const labels = ['', '蓄力 25%', '蓄力 50%', '蓄力 75%', 'MAX 蓄力!'];
+      const colors = ['', '#ffe9a8', '#ffcf4d', '#ffb01f', '#ffe27a'];
+      this.fx.text(p.x, p.pose.head.y - 60 - stage * 10, labels[stage], colors[stage], 24 + stage * 6, 0.8);
+      this.fx.ring(p.x, GROUND - 90, colors[stage], 60 + stage * 30, 0.35);
+      if (stage === 4) sfx.chargeMax();
+      else sfx.bounce();
+    }
     p.glow = Math.max(p.glow, 0.35 + r * 0.65);
     p.glowColor = r >= 0.98 ? '#fff3b0' : '#ffd93d';
     if (Math.random() < r * 0.5 + 0.12) {
@@ -638,7 +652,7 @@ export class Game implements Scene {
     const flow = this.timeFlow();
     // 球速可以飙到两万 px/s，一帧就能飞 300px：按位移切小步，免得穿网 / 穿地
     const travel = Math.hypot(sh.vx, sh.vy) * dt * flow;
-    const steps = clamp(Math.ceil(travel / 26), 1, 24);
+    const steps = clamp(Math.ceil(travel / 26), 1, 32);
     for (let i = 0; i < steps; i++) {
       if (this.stepShuttleOnce(dt / steps, flow)) return;
     }
@@ -839,8 +853,12 @@ export class Game implements Scene {
     const targetX = landingX(p.side, clamp(depth, 0.02, 1.04), this.court) + jitter;
     const prof = serve ? SERVES[serve] : shot;
     const power = sw.power ?? 1;
-    const launchSpeed = prof.speed * (poor ? 0.85 : 1) * (serve ? 1 : 1 + (power - 1) * 0.8);
+    // 暴力弹道靠 k 倍速发力，这里不再叠力量倍率，免得两套系数互相打架
+    const launchSpeed = prof.speed * (poor ? 0.85 : 1) * (serve || shot.blast ? 1 : 1 + (power - 1) * 0.8);
     // 恶搞招式里的「暴力弹道」：能打多快打多快，只要还能过网 / 落在场内
+    // 蓄力比例（0~1）：蓄力越满，暴力弹道的加速倍率越高
+    const ratio = serve ? 0 : clamp((power - 1) / 0.95, 0, 1);
+    const [kMin, kMax] = shot.blastK ?? [3.4, 4];
     const v =
       !serve && shot.blast
         ? solveBlast({
@@ -849,6 +867,8 @@ export class Game implements Scene {
             court: { l: this.court.l, r: this.court.r },
             mustLand: !shot.chaos,
             targetX,
+            kMax: kMin + (kMax - kMin) * Math.pow(ratio, 0.85),
+            free: !!shot.chaos,
           })
         : solveShot({
             x: sh.x, y: sh.y, side: p.side,
@@ -895,6 +915,13 @@ export class Game implements Scene {
     p.glow = 1;
     p.glowColor = serve ? '#ffffff' : shot.color;
     this.maxedBonus = sw.maxed ? 3 : 0;
+    // 蓄力越满，出手的震屏 / 顿帧越凶
+    if (!serve && shot.blast) {
+      const heat = clamp((power - 1) / 0.95, 0, 1);
+      this.fx.shake = Math.max(this.fx.shake, shot.shake * (0.6 + heat * 0.9));
+      this.hitStop = Math.max(this.hitStop, shot.hitStop * (0.7 + heat * 0.8));
+      if (heat > 0.3) this.slowTimer = Math.max(this.slowTimer, shot.slowmo * heat);
+    }
     if (sw.maxed) {
       this.fx.flash = 1;
       this.fx.flashColor = '#fff3b0';

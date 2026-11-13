@@ -57,6 +57,8 @@ export interface ShotDef {
   chaos?: number;
   /** 恶搞模式：不按常规落点求解，改成「能打多快打多快」的暴力弹道 */
   blast?: boolean;
+  /** 暴力弹道的加速倍率区间 [未蓄力, 满蓄力] */
+  blastK?: [number, number];
   /** 恶搞模式：冷却时间（秒） */
   cooldown?: number;
   /** 恶搞模式：命中后把对手震退的力度 */
@@ -134,7 +136,7 @@ export const SHOTS: ShotDef[] = [
     numpad: 'Numpad7', alt: 'KeyU', keyLabel: '7', altLabel: 'U', row: 0, col: 0,
     points: 6, color: '#ffd93d', speed: 9200, depth: 0.56, arc: 'flat', margin: 26,
     duration: 0.46, strike: 0.32, delay: 0, zone: [130, 340],
-    charge: 1.0, blast: true,
+    charge: 1.0, blast: true, blastK: [3.4, 11],
     fx: 'thunder', shake: 30, hitStop: 0.13, slowmo: 0.45, spin: 0,
   },
   {

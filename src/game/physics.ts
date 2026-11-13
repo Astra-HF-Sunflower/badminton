@@ -166,18 +166,22 @@ export interface BlastInput {
   x: number;
   y: number;
   side: 0 | 1;
-  /** 期望的出手速度：会逐档下调，直到找得到能打进场地的那一条弹道 */
+  /** 期望的出手速度（用来推算「物理允许的平射基准速度」） */
   speed: number;
   court: { l: number; r: number };
   /** 必须落在对方场内（默认 true）；false 时只要求过网（超级反弹） */
   mustLand?: boolean;
   targetX?: number;
+  /** 加速倍率上限：蓄力越满给得越高，越大越离谱 */
+  kMax?: number;
+  /** 出球后立刻进入「无视空气阻力」状态（超级反弹），过网要留更多余量 */
+  free?: boolean;
 }
 
 export interface Blast {
   vx: number;
   vy: number;
-  /** 阻力倍率（速度越快阻力越大，落点才不会离谱到出界） */
+  /** 阻力倍率：速度越快阻力越大，落点才不会离谱到出界 */
   dragMul: number;
 }
 
@@ -190,90 +194,111 @@ interface BlastTrial {
   land: number;
 }
 
+/** 暴力弹道的出手速度上限（再高就只是屏幕闪一下了） */
+const BLAST_SPEED_MAX = 45000;
+
+/** 先扫平射角度，再放宽到高抛 */
+const FLAT_DEGS: number[] = [];
+for (let d = -16; d <= 24; d += 2) FLAT_DEGS.push(d);
+const WIDE_DEGS: number[] = [];
+for (let d = -34; d <= 66; d += 4) WIDE_DEGS.push(d);
+
 /**
  * 「离谱」高速出球。
  *
- * 现实里球速越快飞得越远，想又快又不冲出底线就得上高抛 —— 一点不帅。
- * 这里换个玩法：先把弹道算成一条正常的平射，再把初速放大 k 倍、
- * 阻力也放大 k 倍。二次阻力的尺度和初速同倍放大，落点几乎不变，
- * 但球一出手就是 k 倍速的残影，然后急速减速砸进对方场内。
+ * 现实里球越快飞得越远，想又快又落进场地就得上高抛 —— 一点不帅。
+ * 这里换个玩法：把初速乘 k 倍、阻力只乘 2 倍左右。
+ * 前 0.1 秒球是以几万 px/s 冲出去的残影（一步就过网），
+ * 随即被空气拖住，慢慢飘到对方场地里 —— 又快又能算好球。
  */
 export function solveBlast(inp: BlastInput): Blast {
   const dir = sideSign(inp.side);
   const mustLand = inp.mustLand !== false;
+  const kMax = Math.max(1, inp.kMax ?? 4);
   const dt = 1 / 240;
-  const SIM_STEPS = 520;
+  const SIM = 520;
+  const wrapL = WRAP_L;
+  const wrapR = WRAP_R;
+  const span = WRAP_SPAN;
 
-  const fire = (vx: number, vy: number, dragMul: number, courtCheck: boolean): BlastTrial => {
-    const b: Body = { x: inp.x, y: inp.y, vx, vy, dragMul };
+  const clearMargin = inp.free ? 70 : 4;
+  const fire = (vx: number, vy: number, dragMul: number): BlastTrial => {
+    const b: Body = { x: inp.x, y: inp.y, vx, vy, dragMul, star: inp.free };
     let apex = inp.y;
     let crossed = false;
     let land = inp.x;
-    for (let i = 0; i < SIM_STEPS; i++) {
+    for (let i = 0; i < SIM; i++) {
       const px = b.x;
       const py = b.y;
       stepBody(b, dt);
+      // 恶搞模式两侧空气墙是通的
+      if (b.x < wrapL) b.x += span;
+      else if (b.x > wrapR) b.x -= span;
       if (b.y < apex) apex = b.y;
       if ((px - NET_X) * (b.x - NET_X) < 0) {
         const t = (NET_X - px) / (b.x - px || 1);
-        if (py + (b.y - py) * t > NET_TOP - 4) return { ok: false, vx, vy, rise: 0, land: 0 };
+        if (py + (b.y - py) * t > NET_TOP - clearMargin) return { ok: false, vx, vy, rise: 0, land: 0 };
         crossed = true;
       }
       land = b.x;
       if (b.y >= GROUND - SHUTTLE_R) break;
-      if (b.x < -400 || b.x > 2400 || b.y < -200) break;
+      if (b.y < -300) break;
     }
     const inCourt = land * dir > NET_X * dir && land >= inp.court.l && land <= inp.court.r;
-    const ok = crossed && (courtCheck ? inCourt : true);
+    const inHalf = land * dir > NET_X * dir;
+    const ok = crossed && (mustLand ? inCourt : inHalf);
     return { ok, vx, vy, rise: inp.y - apex, land };
   };
 
-  /** 某速度档下、最平且落点最贴目标的一条弹道 */
-  const scan = (speed: number): BlastTrial | null => {
-    let best: BlastTrial | null = null;
-    for (let deg = -42; deg <= 76; deg += 2) {
-      const rad = (deg * Math.PI) / 180;
-      const r = fire(Math.cos(rad) * speed * dir, -Math.sin(rad) * speed, 1, mustLand);
-      if (!r.ok) continue;
-      const err = inp.targetX === undefined ? 0 : Math.abs(r.land - inp.targetX);
-      if (!best) {
-        best = r;
-        continue;
+  /** 给定初速与阻力，挑一条既合法又尽量平的弹道 */
+  const pick = (speed: number, dragMul: number): BlastTrial | null => {
+    for (const degs of [mustLand ? FLAT_DEGS : WIDE_DEGS, WIDE_DEGS]) {
+      let best: BlastTrial | null = null;
+      for (const deg of degs) {
+        const rad = (deg * Math.PI) / 180;
+        const r = fire(Math.cos(rad) * speed * dir, -Math.sin(rad) * speed, dragMul);
+        if (!r.ok) continue;
+        const err = inp.targetX === undefined ? 0 : Math.abs(r.land - inp.targetX);
+        if (!best) {
+          best = r;
+          continue;
+        }
+        const bestErr = inp.targetX === undefined ? 0 : Math.abs(best.land - inp.targetX);
+        if (r.rise < best.rise - 12 || (Math.abs(r.rise - best.rise) <= 12 && err < bestErr)) best = r;
       }
-      const bestErr = inp.targetX === undefined ? 0 : Math.abs(best.land - inp.targetX);
-      if (r.rise < best.rise - 12 || (Math.abs(r.rise - best.rise) <= 12 && err < bestErr)) best = r;
+      if (best) return best;
     }
-    return best;
+    return null;
   };
 
-  let steep: BlastTrial | null = null;
-  let flat: BlastTrial | null = null;
-  for (let tier = 0; tier < 8 && !flat; tier++) {
-    const shot = scan(inp.speed * Math.pow(0.82, tier));
-    if (!shot) continue;
-    if (shot.rise <= 165) {
-      flat = shot;
-      break;
+  // 基准速度：普通阻力下能平射进对方场地的速度（跟着击球高度自动变）
+  let baseSpeed = 0;
+  let flatBase: BlastTrial | null = null;
+  for (let tier = 0; tier < 9 && !flatBase; tier++) {
+    const r = pick(inp.speed * Math.pow(0.82, tier), 1);
+    if (!r) continue;
+    if (r.rise <= 165 || tier >= 8) {
+      flatBase = r;
+      baseSpeed = Math.hypot(r.vx, r.vy);
     }
-    if (!steep) steep = shot; // 先记一条高抛的兜底，继续找更平的
   }
-  const base = flat ?? steep;
-  if (!base) {
-    const v = solveShot({
-      x: inp.x, y: inp.y, side: inp.side,
-      speed: inp.speed * 0.5,
-      targetX: inp.targetX ?? NET_X + dir * 220,
-      arc: 'flat', margin: 26,
-    });
-    return { ...v, dragMul: 1 };
+  if (!flatBase) baseSpeed = inp.speed * 0.4;
+
+  // 从满蓄力的倍率往下试，找到能成立的最高速度档
+  for (let i = 0; i < 9; i++) {
+    const k = kMax - (kMax - 1) * (i / 8);
+    const speed = Math.min(baseSpeed * k, BLAST_SPEED_MAX);
+    for (const dragMul of [2, 2.6, 3.4, 4.4, 1.6, 1.2]) {
+      const r = pick(speed, dragMul);
+      if (r) return { vx: r.vx, vy: r.vy, dragMul };
+    }
   }
-  // 逐档加速，直到「再快就飞出去」为止
-  let best: Blast = { vx: base.vx, vy: base.vy, dragMul: 1 };
-  for (const k of [4, 3.4, 2.8, 2.3, 1.8, 1.4, 1.2]) {
-    const r = fire(base.vx * k, base.vy * k, k, mustLand);
-    if (!r.ok) continue;
-    best = { vx: base.vx * k, vy: base.vy * k, dragMul: k };
-    break;
-  }
-  return best;
+  if (flatBase) return { vx: flatBase.vx, vy: flatBase.vy, dragMul: 1 };
+  const v = solveShot({
+    x: inp.x, y: inp.y, side: inp.side,
+    speed: inp.speed * 0.5,
+    targetX: inp.targetX ?? NET_X + dir * 220,
+    arc: 'flat', margin: 26,
+  });
+  return { ...v, dragMul: 1 };
 }
