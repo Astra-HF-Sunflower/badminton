@@ -44,6 +44,8 @@ export class Player {
   minX: number;
   maxX: number;
   speedMul = 1;
+  /** 动作速度倍率（天堂制造会让挥拍前后摇极快） */
+  animSpeed = 1;
   /** 最近一次的方向输入（击球时用来微调落点深浅） */
   moveInput = 0;
 
@@ -103,6 +105,11 @@ export class Player {
 
   private startSwing(shotId: ShotId, serve: ServeKind | null, power = 1, maxed = false) {
     const shot = SHOT_BY_ID[shotId];
+    // 失重时挥拍会产生反作用力，可以借此控制漂浮方向
+    if (getGravityScale() < 0.95) {
+      this.vx -= this.facing * 300 * (0.7 + power * 0.3);
+      this.vz += 190;
+    }
     const delay = shot.id === 'jumpSmash' && this.z <= 1 && !serve ? shot.delay : 0;
     if (delay > 0) {
       this.vz = PLAYER.jumpV;
@@ -115,7 +122,7 @@ export class Player {
       power,
       maxed,
       t: -delay,
-      dur: serve ? 0.44 : shot.duration,
+      dur: (serve ? 0.44 : shot.duration) / this.animSpeed,
       strike: serve ? 0.4 : shot.strike,
       done: false,
       aim: null,
@@ -144,12 +151,23 @@ export class Player {
     if (this.x === this.minX || this.x === this.maxX) this.vx *= 0.5;
 
     // —— 跳跃 ——
-    if (intent.jump && this.z <= 0 && this.vz <= 0) {
-      this.vz = PLAYER.jumpV;
+    const gScale = getGravityScale();
+    const lowG = gScale < 0.95;
+    if (intent.jump && this.z <= (lowG ? 2 : 0) && this.vz <= (lowG ? 80 : 0)) {
+      this.vz = PLAYER.jumpV * (lowG ? 0.85 : 1);
       this.events.jumped = true;
     }
-    if (this.z > 0 || this.vz > 0) {
-      this.vz -= PLAYER.gravity * getGravityScale() * dt;
+    if (lowG) {
+      // 失重：人和球一起漂，围绕一个悬浮高度轻轻起伏
+      const hover = 34 + Math.sin(this.time * 1.5 + this.side * 2.1) * 14;
+      this.vz += ((hover - this.z) * 5.2 - this.vz * 3.0) * dt;
+      this.z += this.vz * dt;
+      if (this.z < 0) {
+        this.z = 0;
+        this.vz = Math.max(this.vz, 0);
+      }
+    } else if (this.z > 0 || this.vz > 0) {
+      this.vz -= PLAYER.gravity * gScale * dt;
       this.z += this.vz * dt;
       if (this.z <= 0) {
         this.events.landed = -this.vz;
@@ -181,7 +199,8 @@ export class Player {
         const id = this.charge.shot;
         this.charge = null;
         const serve = canSwing(id);
-        if (ratio > 0.08 && serve !== false) this.startSwing(id, serve, 1 + ratio * 0.95, ratio >= 0.98);
+        // 松手立刻出手，不必等蓄满
+        if (ratio > 0.01 && serve !== false) this.startSwing(id, serve, 1 + ratio * 0.95, ratio >= 0.98);
       }
     } else if (this.charge) {
       this.charge = null;

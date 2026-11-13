@@ -55,6 +55,8 @@ export interface Scene {
   rally: number;
   banner: Banner | null;
   netSway: number;
+  /** 失重时球网的漂浮偏移 */
+  netLift: number;
   excite: number;
   marks: LandingMark[];
   used: Map<string, number>;
@@ -278,7 +280,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, s: Scene, cw: number, c
     ctx.stroke();
   }
 
-  drawNet(ctx, s.netSway);
+  drawNet(ctx, s.netSway, s.netLift);
 
   // 阴影
   for (const p of s.players) drawShadow(ctx, p.x, p.z, 40);

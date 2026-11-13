@@ -150,7 +150,7 @@ export function drawBackground(ctx: CanvasRenderingContext2D, time: number, exci
 }
 
 /** 球网：sway 为受击后的摆动 */
-export function drawNet(ctx: CanvasRenderingContext2D, sway: number) {
+export function drawNet(ctx: CanvasRenderingContext2D, sway: number, lift = 0) {
   ctx.save();
   // 地面投影
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -160,6 +160,8 @@ export function drawNet(ctx: CanvasRenderingContext2D, sway: number) {
 
   const topX = NET_X + sway;
   const hw = 10;
+  // 失重时整张网会浮起来
+  ctx.translate(0, lift);
   // 网面
   ctx.beginPath();
   ctx.moveTo(topX - hw, NET_TOP);

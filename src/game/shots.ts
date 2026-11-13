@@ -55,6 +55,8 @@ export interface ShotDef {
   charge?: number;
   /** 恶搞模式：落地后继续乱弹的次数（超级反弹） */
   chaos?: number;
+  /** 恶搞模式：不按常规落点求解，改成「能打多快打多快」的暴力弹道 */
+  blast?: boolean;
   /** 恶搞模式：冷却时间（秒） */
   cooldown?: number;
   /** 恶搞模式：命中后把对手震退的力度 */
@@ -130,17 +132,18 @@ export const SHOTS: ShotDef[] = [
   {
     id: 'thunderSmash', tier: 'meme', name: '雷霆蓄力杀球', en: 'Thunder Smash', desc: '长按蓄力，蓄满一击速度爆表',
     numpad: 'Numpad7', alt: 'KeyU', keyLabel: '7', altLabel: 'U', row: 0, col: 0,
-    points: 6, color: '#ffd93d', speed: 5200, depth: 0.56, arc: 'flat', margin: 26,
-    duration: 1.02, strike: 0.72, delay: 0, zone: [240, 480],
-    charge: 1.1,
+    points: 6, color: '#ffd93d', speed: 9200, depth: 0.56, arc: 'flat', margin: 26,
+    duration: 0.46, strike: 0.32, delay: 0, zone: [130, 340],
+    charge: 1.0, blast: true,
     fx: 'thunder', shake: 30, hitStop: 0.13, slowmo: 0.45, spin: 0,
   },
   {
     id: 'superRebound', tier: 'meme', name: '超级反弹', en: 'Super Rebound', desc: '超高速轰出场外，球在场上乱弹一通才停下（冷却 10 秒）',
     numpad: 'Numpad9', alt: 'KeyO', keyLabel: '9', altLabel: 'O', row: 0, col: 2,
-    points: 5, color: '#7cf7ff', speed: 4400, depth: 0.72, arc: 'flat', margin: 26,
+    points: 5, color: '#7cf7ff', speed: 8200, depth: 0.72, arc: 'flat', margin: 26,
     duration: 0.5, strike: 0.42, delay: 0, zone: [60, 430],
-    fx: 'bolt', shake: 20, hitStop: 0.06, slowmo: 0.25, spin: 6, chaos: 10, cooldown: 10,
+    blast: true,
+    fx: 'bolt', shake: 26, hitStop: 0.06, slowmo: 0.25, spin: 6, chaos: 13, cooldown: 10,
   },
   {
     id: 'shockwave', tier: 'meme', name: '冲击波', en: 'Shockwave', desc: '命中瞬间把对手震退好几步',

@@ -6,7 +6,7 @@ import { GROUND, NET_TOP, NET_X, PLAYER, SHUTTLE_R, Side, clamp, opponent, rand,
 import { CourtDef, CourtSize, courtHomeX, courtOf } from './court';
 import { Fx } from './fx';
 import { Input, Keymap, p1Keys, p2Keys, soloKeys } from './input';
-import { landingX, setGravityScale, solveShot, stepBody } from './physics';
+import { landingX, setGravityScale, solveBlast, solveShot, stepBody } from './physics';
 import { Intent, Player, ServeKind, Swing } from './player';
 import { Banner, LandingMark, Scene, drawScene } from './render/scene';
 import { sfx } from './audio';
@@ -88,6 +88,8 @@ export class Game implements Scene {
   rally = 0;
   banner: Banner | null = null;
   netSway = 0;
+  /** 失重时球网的漂浮偏移 */
+  netLift = 0;
   excite = 0;
   marks: LandingMark[] = [];
   used = new Map<string, number>();
@@ -131,7 +133,8 @@ export class Game implements Scene {
     this.difficultyLabel = DIFFICULTY_LABEL[opts.difficulty];
     const single = opts.mode === 'single';
     this.humanSides = [true, !single];
-    this.characters = opts.characters ?? ['none', 'none'];
+    // 角色技能是恶搞模式专属
+    this.characters = opts.style === 'meme' ? opts.characters ?? ['none', 'none'] : ['none', 'none'];
     this.players = [
       new Player(0, single ? '你' : 'P1', '#38bdf8', this.homeX[0], this.court),
       new Player(1, single ? '电脑' : 'P2', '#fb7185', this.homeX[1], this.court),
@@ -306,6 +309,8 @@ export class Game implements Scene {
     this.fx.update(dt);
     this.netVel += (-this.netSway * 220 - this.netVel * 5) * dt;
     this.netSway += this.netVel * dt;
+    const liftTarget = this.gravity < 0.95 ? Math.sin(this.time * 1.15) * 24 - 12 : 0;
+    this.netLift += (liftTarget - this.netLift) * Math.min(1, dt * 3);
     this.excite = Math.max(0, this.excite - dt * 0.35);
     this.scorePop = [Math.max(0, this.scorePop[0] - dt * 2.6), Math.max(0, this.scorePop[1] - dt * 2.6)];
     for (const m of this.marks) m.age += dt;
@@ -356,24 +361,23 @@ export class Game implements Scene {
       setGravityScale(g);
     }
 
-    // 天堂制造：只加速本人
+    // 天堂制造：只加速本人（移动 + 挥拍动作）
     for (const side of sides) {
       const st = this.skills[side];
       const on = this.characters[side] === 'heaven' && st.active > 0;
       this.players[side].speedMul = this.baseSpeedMul[side] * (on ? st.level : 1);
+      this.players[side].animSpeed = on ? st.level : 1;
     }
 
     if (this.timeStop) this.timeStop.t += dt;
   }
 
-  /** 球的时间流速（天堂制造） */
+  /** 球的时间流速：只加速天堂制造本人打出去的球，对方来的球保持原速 */
   private timeFlow(): number {
-    let k = 1;
-    for (const side of [0, 1] as Side[]) {
-      const st = this.skills[side];
-      if (this.characters[side] === 'heaven' && st.active > 0) k = Math.max(k, st.level);
-    }
-    return k;
+    const side = this.shuttle.lastHitter;
+    if (side === null) return 1;
+    const st = this.skills[side];
+    return this.characters[side] === 'heaven' && st.active > 0 ? st.level : 1;
   }
 
   /** 发动技能（天堂制造在持续期间再按一次切换倍率） */
@@ -595,6 +599,7 @@ export class Game implements Scene {
 
   private holdShuttle(dt: number) {
     const sh = this.shuttle;
+    sh.dragMul = 1;
     if (sh.held === null) return;
     const p = this.players[sh.held];
     sh.x = p.x + p.facing * 54;
@@ -604,9 +609,21 @@ export class Game implements Scene {
 
   private stepShuttle(dt: number) {
     const sh = this.shuttle;
+    const flow = this.timeFlow();
+    // 球速可以飙到两万 px/s，一帧就能飞 300px：按位移切小步，免得穿网 / 穿地
+    const travel = Math.hypot(sh.vx, sh.vy) * dt * flow;
+    const steps = clamp(Math.ceil(travel / 26), 1, 24);
+    for (let i = 0; i < steps; i++) {
+      if (this.stepShuttleOnce(dt / steps, flow)) return;
+    }
+  }
+
+  /** @returns 是否已经落地结算（后续小步不用再跑） */
+  private stepShuttleOnce(dt: number, flow: number): boolean {
+    const sh = this.shuttle;
     const px = sh.x;
     const py = sh.y;
-    stepBody(sh, dt * this.timeFlow());
+    stepBody(sh, dt * flow);
 
     // 角度：球头朝向飞行方向；击球后会先“翻转”一下
     const speed = Math.hypot(sh.vx, sh.vy);
@@ -650,6 +667,7 @@ export class Game implements Scene {
     for (const t of sh.trail) t.age += dt;
     while (sh.trail.length && sh.trail[0].age > 0.34) sh.trail.shift();
     if (speed > 250) sh.trail.push({ x: sh.x, y: sh.y, age: 0 });
+    while (sh.trail.length > 190) sh.trail.shift();
     this.fxTick += dt;
     if (this.fxTick > 0.018 && sh.lastShot && speed > 140) {
       this.fxTick = 0;
@@ -663,8 +681,15 @@ export class Game implements Scene {
       if (sh.y >= GROUND - SHUTTLE_R) {
         sh.y = GROUND - SHUTTLE_R;
         // 越弹越低，但保证还能弹起来，看起来是「乱弹一通」
-        sh.vy = -Math.max(Math.abs(sh.vy) * 0.78, 330);
-        sh.vx = sh.vx * 0.9 + rand(-110, 110);
+        sh.vy = -Math.max(Math.abs(sh.vy) * 0.9, 520);
+        sh.vx = sh.vx * 0.94 + rand(-320, 320);
+        // 空气阻力会吃掉速度：弹一下就补回一档，别让球早早瘫在地上
+        const sp = Math.hypot(sh.vx, sh.vy);
+        if (sp < 2700) {
+          const k = 2700 / (sp || 1);
+          sh.vx *= k;
+          sh.vy *= k;
+        }
         sh.chaos -= 1;
         this.fx.floorRing(sh.x, '#7cf7ff', 90);
         this.fx.sparks(sh.x, GROUND - 10, '#7cf7ff', 8, 320, { angle: -Math.PI / 2, spread: 1.5 });
@@ -674,14 +699,14 @@ export class Game implements Scene {
       }
       if (sh.x < left || sh.x > right) {
         sh.x = clamp(sh.x, left, right);
-        sh.vx = -sh.vx * 0.92;
+        sh.vx = -sh.vx * 1.02;
         this.fx.sparks(sh.x, sh.y, '#7cf7ff', 8, 300, { angle: sh.x < left ? 0 : Math.PI, spread: 1.2 });
         this.fx.ring(sh.x, sh.y, '#7cf7ff', 46, 0.3);
         sfx.bounce();
       }
       if (sh.y < 90) {
         sh.y = 90;
-        sh.vy = Math.abs(sh.vy) * 0.8;
+        sh.vy = Math.abs(sh.vy) * 0.92;
         this.fx.sparks(sh.x, sh.y, '#7cf7ff', 6, 260, { angle: Math.PI / 2, spread: 1 });
       }
     }
@@ -690,7 +715,9 @@ export class Game implements Scene {
     if (sh.chaos === 0 && (sh.y >= GROUND - SHUTTLE_R || sh.x < -300 || sh.x > 1900)) {
       sh.y = Math.min(sh.y, GROUND - SHUTTLE_R);
       this.land();
+      return true;
     }
+    return false;
   }
 
   // ————————————————— 击球判定 —————————————————
@@ -746,14 +773,26 @@ export class Game implements Scene {
     const targetX = landingX(p.side, clamp(depth, 0.02, 1.04), this.court) + jitter;
     const prof = serve ? SERVES[serve] : shot;
     const power = sw.power ?? 1;
-    const v = solveShot({
-      x: sh.x, y: sh.y, side: p.side,
-      speed: prof.speed * (poor ? 0.85 : 1) * (serve ? 1 : 1 + (power - 1) * 0.8),
-      targetX, arc: prof.arc, margin: prof.margin,
-    });
+    const launchSpeed = prof.speed * (poor ? 0.85 : 1) * (serve ? 1 : 1 + (power - 1) * 0.8);
+    // 恶搞招式里的「暴力弹道」：能打多快打多快，只要还能过网 / 落在场内
+    const v =
+      !serve && shot.blast
+        ? solveBlast({
+            x: sh.x, y: sh.y, side: p.side,
+            speed: launchSpeed,
+            court: { l: this.court.l, r: this.court.r },
+            mustLand: !shot.chaos,
+            targetX,
+          })
+        : solveShot({
+            x: sh.x, y: sh.y, side: p.side,
+            speed: launchSpeed,
+            targetX, arc: prof.arc, margin: prof.margin,
+          });
 
     sh.vx = v.vx;
     sh.vy = v.vy;
+    sh.dragMul = !serve && shot.blast ? (v as { dragMul?: number }).dragMul ?? 1 : 1;
     sh.held = null;
     sh.lastHitter = p.side;
     sh.lastShot = serve ? null : shot;

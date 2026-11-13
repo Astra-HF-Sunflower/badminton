@@ -117,7 +117,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
       mode,
       style,
       court,
-      characters: mode === 'single' ? [charP1, 'none'] : [charP1, charP2],
+      characters: style === 'meme' ? (mode === 'single' ? [charP1, 'none'] : [charP1, charP2]) : ['none', 'none'],
       difficulty,
       target,
     });
@@ -155,7 +155,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <ShuttleLogo />
             <span className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-300/80">Stickman Badminton</span>
             <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
-              v0.2.0
+              v0.3.0
             </span>
           </div>
           <h1 className="bg-gradient-to-br from-white via-sky-100 to-cyan-300 bg-clip-text text-5xl font-black leading-tight text-transparent sm:text-6xl">
@@ -197,12 +197,20 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{PLAYSTYLES.find((p) => p.id === style)?.desc}</p>
             </div>
 
-            <CharacterPicker
-              label={mode === 'single' ? '你的角色 · 技能' : 'P1 角色 · 技能'}
-              value={charP1}
-              onChange={setCharP1}
-            />
-            {mode === 'double' && <CharacterPicker label="P2 角色 · 技能" value={charP2} onChange={setCharP2} />}
+            {style === 'meme' ? (
+              <>
+                <CharacterPicker
+                  label={mode === 'single' ? '你的角色 · 技能' : 'P1 角色 · 技能'}
+                  value={charP1}
+                  onChange={setCharP1}
+                />
+                {mode === 'double' && <CharacterPicker label="P2 角色 · 技能" value={charP2} onChange={setCharP2} />}
+              </>
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                角色技能是<b className="text-fuchsia-300/80"> 恶搞模式 </b>专属，切到恶搞模式即可选择角色
+              </div>
+            )}
 
             <div>
               <div className="mb-2 flex items-center justify-between">
@@ -287,11 +295,15 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                   <Hint k="P2：← → · ↑ 或 0" v="移动 · 跳跃" />
                 </>
               )}
-              <Hint k={mode === 'single' ? 'Q' : 'Q / 右 Shift'} v="角色技能" />
-              {mode === 'single' ? <Hint k="C" v="接球（恶搞模式）" /> : <Hint k="C / 小键盘 Enter" v="接球（恶搞模式）" />}
+              {style === 'meme' && (
+                <>
+                  <Hint k={mode === 'single' ? 'Q' : 'Q / 右 Shift'} v="角色技能" />
+                  {mode === 'single' ? <Hint k="C" v="接球" /> : <Hint k="C / 小键盘 Enter" v="接球" />}
+                  <Hint k="按住 7（雷霆杀球）" v="蓄力，松手就出手" />
+                </>
+              )}
               <Hint k="Esc / P" v="暂停" />
               <Hint k="击球时按住 ← →" v="调整落点深浅" />
-              <Hint k="长按 7（雷霆杀球）" v="蓄力，蓄满威力爆表" />
             </div>
           </div>
 

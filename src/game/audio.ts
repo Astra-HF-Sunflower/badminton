@@ -114,7 +114,7 @@ class AudioEngine {
       flick: [1500, 4200, 0.12],
       jumpSmash: [300, 2800, 0.24],
       cut: [1800, 800, 0.13],
-      thunderSmash: [200, 4200, 0.3],
+      thunderSmash: [220, 2400, 0.16],
       superRebound: [1200, 3200, 0.16],
       shockwave: [500, 3600, 0.26],
     };
@@ -171,10 +171,11 @@ class AudioEngine {
         this.tone(1750, 0.06, { to: 1100, vol: 0.12 * k, type: 'square', delay: 0.01 });
         break;
       case 'thunderSmash':
-        this.noise(0.2, { freq: 3000, to: 120, q: 0.5, vol: 1 });
-        this.tone(90, 0.6, { to: 28, vol: 1, type: 'sawtooth' });
-        this.tone(1200, 0.08, { to: 120, vol: 0.5, type: 'square' });
-        this.noise(0.7, { type: 'lowpass', freq: 2200, to: 90, q: 0.4, vol: 0.6, delay: 0.04 });
+        // 柔和一些：低频轰鸣 + 轻脆击打，去掉刺耳的高频方波
+        this.noise(0.16, { type: 'lowpass', freq: 1500, to: 260, q: 0.7, vol: 0.5 * k });
+        this.tone(120, 0.42, { to: 46, vol: 0.42 * k, type: 'sine' });
+        this.tone(430, 0.13, { to: 150, vol: 0.14 * k, type: 'triangle' });
+        this.noise(0.3, { freq: 1800, to: 700, q: 1.4, vol: 0.14 * k, delay: 0.02 });
         break;
       case 'superRebound':
         this.noise(0.08, { freq: 2600, q: 1, vol: 0.5 * k });
@@ -210,9 +211,9 @@ class AudioEngine {
 
   /** 蓄力满 */
   chargeMax() {
-    this.tone(1320, 0.18, { to: 1980, vol: 0.14, type: 'square' });
-    this.tone(1980, 0.26, { to: 2640, vol: 0.1, type: 'triangle', delay: 0.06 });
-    this.noise(0.2, { freq: 4200, q: 2, vol: 0.14 });
+    this.tone(660, 0.22, { to: 990, vol: 0.1, type: 'triangle' });
+    this.tone(990, 0.3, { to: 1320, vol: 0.06, type: 'sine', delay: 0.06 });
+    this.noise(0.18, { type: 'lowpass', freq: 2200, q: 1, vol: 0.07 });
   }
 
   /** 接球成功 */

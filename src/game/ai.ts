@@ -62,6 +62,8 @@ export class AIController {
   private readonly meme: boolean;
   /** 引擎传入的冷却表（秒） */
   private cool: Map<ShotId, number> | null = null;
+  /** 蓄力球计划松手的时间点 */
+  private releaseAt: number | null = null;
   private plan: Plan | null = null;
   private replan = 0;
   private clock = 0;
@@ -87,6 +89,7 @@ export class AIController {
 
   resetRally() {
     this.plan = null;
+    this.releaseAt = null;
     this.replan = 0;
     this.serveWait = rand(0.9, 1.4);
   }
@@ -123,6 +126,21 @@ export class AIController {
 
     // 来球判定：对方击出的球，或者被「超级反弹」弹回、正飞向自己半场的球
     const onMySide = (shuttle.x - NET_X) * me.facing < 0;
+    // —— 蓄力进行中：只管理松手时机，绝不半途丢掉 ——
+    if (me.charge) {
+      const rel = this.releaseAt;
+      const done = rel === null || this.clock >= rel;
+      intent.charge = { shot: me.charge.shot, held: !done };
+      if (done) {
+        this.releaseAt = null;
+        this.plan = null;
+        this.replan = 0.3;
+      } else if (this.plan) {
+        goTo(this.plan.x - f * 56);
+      }
+      return intent;
+    }
+
     const incoming =
       phase === 'rally' &&
       shuttle.held === null &&
@@ -150,24 +168,14 @@ export class AIController {
       const strikeTotal = shot.delay + shot.duration * shot.strike;
       const aligned = Math.abs(me.x - (plan.x - f * 56)) < 80;
 
-      // 已经蓄力中：按到出手点松手
-      if (me.charge) {
-        if (left <= strikeTotal || !aligned) {
-          intent.charge = { shot: me.charge.shot, held: false };
-          this.plan = null;
-          this.replan = 0.3;
-        } else {
-          intent.charge = { shot: me.charge.shot, held: true };
-        }
-        return intent;
-      }
-
-      // 需要蓄力的球：提前按住
+      // 需要蓄力的球：提前按住，到出手点松手
       const chargeNeed = shot.charge ? plan.charge ?? 0.6 : 0;
       if (!me.swing && left <= strikeTotal + chargeNeed && left > -0.12 && aligned) {
-        if (shot.charge) {
-          intent.charge = { shot: plan.shot, held: left > strikeTotal };
+        if (shot.charge && left > strikeTotal + 0.02) {
+          this.releaseAt = this.clock + (left - strikeTotal);
+          intent.charge = { shot: plan.shot, held: true };
         } else {
+          // 来不及蓄力就直接拍出去（力量 1）
           intent.shot = plan.shot;
           this.plan = null;
           this.replan = 0.25;
@@ -197,18 +205,18 @@ export class AIController {
         y: r.y,
         t: r.t,
         stamp: this.clock,
-        charge: SHOT_BY_ID[shot].charge ? rand(0.45, 1.05) : undefined,
+        charge: SHOT_BY_ID[shot].charge ? rand(0.4, SHOT_BY_ID[shot].charge ?? 0.9) : undefined,
       };
     };
     const relEarly = GROUND - s.y;
     // 恶搞模式：按来球高度挑暴走三招（高度不够就不硬上，避免空挥）
-    if (this.meme && Math.random() < 0.6) {
+    if (this.meme && Math.random() < 0.42) {
       const list: [ShotId, number][] = [];
-      if (relEarly > 300) list.push(['thunderSmash', 3]);
+      if (relEarly > 300) list.push(['thunderSmash', 2]);
       if (relEarly > 150) list.push(['shockwave', 3]);
       list.push(['superRebound', 2], ['smash', 1.5]);
       const id = this.choose(list);
-      const relY = id === 'thunderSmash' ? 360 : id === 'shockwave' ? 265 : 220;
+      const relY = id === 'thunderSmash' ? 185 : id === 'shockwave' ? 240 : 220;
       const wild = make(id, relY);
       if (wild) return wild;
     }
