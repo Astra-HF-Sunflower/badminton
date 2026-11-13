@@ -98,6 +98,9 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
           <div className="mb-1 flex items-center gap-3">
             <ShuttleLogo />
             <span className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-300/80">Stickman Badminton</span>
+            <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
+              v0.1.0
+            </span>
           </div>
           <h1 className="bg-gradient-to-br from-white via-sky-100 to-cyan-300 bg-clip-text text-5xl font-black leading-tight text-transparent sm:text-6xl">
             火柴人
