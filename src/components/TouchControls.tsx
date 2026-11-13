@@ -1,8 +1,10 @@
 import type { PointerEvent } from 'react';
-import { SHOTS } from '../game/shots';
+import type { ShotDef } from '../game/shots';
 
 interface Props {
   onKey: (code: string, down: boolean) => void;
+  /** 当前玩法模式可用的击球 */
+  shots: ShotDef[];
 }
 
 function Btn({
@@ -38,7 +40,7 @@ function Btn({
 }
 
 /** 触屏虚拟按键（仅单人模式） */
-export function TouchControls({ onKey }: Props) {
+export function TouchControls({ onKey, shots }: Props) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between p-3 sm:p-5">
       <div className="pointer-events-auto flex items-end gap-2">
@@ -47,7 +49,7 @@ export function TouchControls({ onKey }: Props) {
         <Btn code="ArrowUp" onKey={onKey} className="mb-12 ml-2 h-16 w-16 bg-white/15 text-sm text-white">跳</Btn>
       </div>
       <div className="pointer-events-auto grid grid-cols-3 gap-1.5">
-        {SHOTS.map((s) => (
+        {shots.map((s) => (
           <Btn
             key={s.id}
             code={s.numpad}
