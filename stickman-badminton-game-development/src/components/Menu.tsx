@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { Difficulty } from '../game/ai';
+import { bgm, BGM_TRACKS } from '../game/bgm';
 import type { GameOptions, Mode } from '../game/engine';
 import { sfx } from '../game/audio';
-import { SHOTS } from '../game/shots';
+import { PlayStyle, PLAYSTYLES, SHOTS, shotsFor } from '../game/shots';
 import { KeyGrid } from './KeyGrid';
 
 interface Props {
@@ -51,13 +52,25 @@ const Label = ({ children }: { children: string }) => (
 
 export function Menu({ onStart, muted, onToggleMute }: Props) {
   const [mode, setMode] = useState<Mode>('single');
+  const [style, setStyle] = useState<PlayStyle>('casual');
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [target, setTarget] = useState(21);
+  const [musicId, setMusicId] = useState<string | null>(bgm.currentId);
+  const [musicVol, setMusicVol] = useState(bgm.volume);
+
+  const shots = shotsFor(style);
+  const lockedShots = SHOTS.filter((s) => !shots.includes(s));
 
   const start = () => {
     sfx.init();
     sfx.click();
-    onStart({ mode, difficulty, target });
+    onStart({ mode, style, difficulty, target });
+  };
+
+  const pickMusic = (id: string | null) => {
+    sfx.init();
+    bgm.play(id);
+    setMusicId(id);
   };
 
   return (
@@ -92,7 +105,9 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             羽毛球
           </h1>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-400">
-            九种击球，各有专属挥拍、特效、音效与得分。抓住完美时机，用一记跳杀终结比赛。
+            {style === 'pro'
+              ? '九种击球，各有专属挥拍、特效、音效与得分。抓住完美时机，用一记跳杀终结比赛。'
+              : '四种基础击球，上手就能打。想玩吊球、搓球、跳杀？切到专业模式解锁全部九种。'}
           </p>
 
           <div className="mt-8 space-y-6">
@@ -107,6 +122,22 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                 ]}
               />
             </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">玩法</div>
+                <span className="text-[11px] font-bold text-cyan-300/80">
+                  {shots.length} / {SHOTS.length} 种击球
+                </span>
+              </div>
+              <Seg
+                value={style}
+                onChange={setStyle}
+                options={PLAYSTYLES.map((p) => ({ value: p.id, label: p.label, sub: p.sub }))}
+              />
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{PLAYSTYLES.find((p) => p.id === style)?.desc}</p>
+            </div>
+
             {mode === 'single' && (
               <div>
                 <Label>电脑难度</Label>
@@ -149,14 +180,21 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
           <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 backdrop-blur">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-black text-white">击球键位</h2>
-              <span className="text-xs text-slate-400">电脑版使用数字小键盘</span>
+              <span className="text-xs text-slate-400">
+                {style === 'casual' ? '普通模式 · 4 键' : '专业模式 · 9 键'}
+              </span>
             </div>
             {mode === 'single' ? (
-              <KeyGrid field="keyLabel" title="数字小键盘（也可用 U I O / J K L / M , . 镜像键位）" accent="#7dd3fc" />
+              <KeyGrid
+                field="keyLabel"
+                title="数字小键盘（也可用 U I O / J K L / M , . 镜像键位）"
+                accent="#7dd3fc"
+                shots={shots}
+              />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                <KeyGrid field="altLabel" title="P1 · 蓝方 · 左侧" accent="#38bdf8" />
-                <KeyGrid field="keyLabel" title="P2 · 红方 · 小键盘" accent="#fb7185" />
+                <KeyGrid field="altLabel" title="P1 · 蓝方 · 左侧" accent="#38bdf8" shots={shots} />
+                <KeyGrid field="keyLabel" title="P2 · 红方 · 小键盘" accent="#fb7185" shots={shots} />
               </div>
             )}
             <div className="mt-3 grid gap-2 text-[13px] text-slate-300 sm:grid-cols-2">
@@ -177,9 +215,14 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 backdrop-blur">
-            <h2 className="mb-3 text-base font-black text-white">击球一览</h2>
+            <h2 className="mb-3 text-base font-black text-white">
+              击球一览
+              <span className="ml-2 text-xs font-bold text-slate-400">
+                {style === 'casual' ? '普通模式 · 基础' : '专业模式 · 进阶'}
+              </span>
+            </h2>
             <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
-              {SHOTS.map((s) => (
+              {shots.map((s) => (
                 <div key={s.id} className="flex items-start gap-2.5">
                   <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />
                   <div className="text-[13px] leading-snug">
@@ -190,14 +233,98 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                 </div>
               ))}
             </div>
+            {lockedShots.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
+                <span className="text-[11px] font-bold text-slate-500">专业模式解锁：</span>
+                {lockedShots.map((s) => (
+                  <span
+                    key={s.id}
+                    className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold text-slate-400"
+                    title={s.desc}
+                  >
+                    🔒 {s.name}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className="mt-3 border-t border-white/10 pt-3 text-xs leading-relaxed text-slate-400">
               得分 = 终结回合那一拍的分值。球拍在<b className="text-amber-300"> 最佳距离 </b>
               击中且高度合适即为<b className="text-amber-300"> 完美击球 +1 分</b>；高度不合适则变成“勉强回球”，落点失控且只得 1 分。出界、触网、未过网，对手得 1 分。
             </p>
           </div>
+
+          {/* 背景音乐：曲目表来自 src/game/bgm.ts，往那里加歌就会自动出现在这里 */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-black text-white">背景音乐</h2>
+              <span className="text-xs text-slate-400">{bgm.current?.sub ?? '已关闭'}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <TrackChip active={musicId === null} onClick={() => pickMusic(null)} title="关闭" sub="安静打球" />
+              {BGM_TRACKS.map((t) => (
+                <TrackChip
+                  key={t.id}
+                  active={musicId === t.id}
+                  onClick={() => pickMusic(t.id)}
+                  title={t.title}
+                  sub={t.sub}
+                />
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="w-16 shrink-0 text-[11px] font-bold text-slate-400">音乐音量</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={musicVol}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  bgm.setVolume(v);
+                  setMusicVol(v);
+                }}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-white/15 accent-cyan-400"
+              />
+              <span className="w-8 shrink-0 text-right text-[11px] font-bold tabular-nums text-slate-400">
+                {Math.round(musicVol * 100)}
+              </span>
+            </div>
+            <p className="mt-3 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-slate-500">
+              想换成自己的曲子？把 mp3 放进 <code className="rounded bg-white/10 px-1 text-slate-300">public/bgm/</code>
+              ，再到 <code className="rounded bg-white/10 px-1 text-slate-300">src/game/bgm.ts</code> 的
+              <code className="rounded bg-white/10 px-1 text-slate-300">BGM_TRACKS</code> 里加一行，这里会自动多出一个选项。
+            </p>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function TrackChip({
+  active, onClick, title, sub,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-left transition-all duration-200 ${
+        active
+          ? 'border-cyan-300/70 bg-cyan-300/15 shadow-[0_0_20px_-6px_rgba(103,232,249,0.7)]'
+          : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.08]'
+      }`}
+    >
+      <div className={`text-[13px] font-extrabold ${active ? 'text-cyan-100' : 'text-slate-200'}`}>
+        {active ? '🎵 ' : ''}
+        {title}
+      </div>
+      <div className="mt-0.5 text-[11px] text-slate-400">{sub}</div>
+    </button>
   );
 }
 

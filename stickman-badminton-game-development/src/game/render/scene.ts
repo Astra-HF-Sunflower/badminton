@@ -2,6 +2,7 @@ import { GROUND, H, W, clamp } from '../constants';
 import type { Phase } from '../ai';
 import type { Fx } from '../fx';
 import type { Player } from '../player';
+import type { PlayStyle, ShotDef } from '../shots';
 import type { Shuttle } from '../shuttle';
 import { drawBackground, drawNet } from './background';
 import { drawHud } from './hud';
@@ -24,6 +25,9 @@ export interface LandingMark {
 export interface Scene {
   time: number;
   mode: 'single' | 'double';
+  style: PlayStyle;
+  /** 本局可用的击球 */
+  shots: ShotDef[];
   difficultyLabel: string;
   phase: Phase;
   players: [Player, Player];

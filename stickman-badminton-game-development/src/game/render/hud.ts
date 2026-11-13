@@ -1,5 +1,5 @@
 import { GROUND, Side, W } from '../constants';
-import { SHOTS } from '../shots';
+import { playStyleOf } from '../shots';
 import type { Scene } from './scene';
 
 const FONT = "'PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif";
@@ -77,7 +77,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
 
   const cw = 104;
   const ch = 40;
-  for (const shot of SHOTS) {
+  for (const shot of s.shots) {
     const x = x0 + 8 + shot.col * (cw + 3);
     const y = y0 + 30 + shot.row * (ch + 3);
     const used = Math.max(0, 1 - (s.time - (s.used.get(`${side}:${shot.id}`) ?? -9)) * 3.2);
@@ -168,7 +168,7 @@ function drawServePrompt(ctx: CanvasRenderingContext2D, s: Scene) {
   ctx.globalAlpha = pulse;
   panel(ctx, x - 190, y - 26, 380, 52, 26, 0.72);
   text(ctx, '按任意击球键发球', x, y - 6, 18, '#ffffff');
-  text(ctx, '搓球 / 吊球 / 劈吊 / 弹击 = 短发球 · 其余 = 高远发球', x, y + 14, 12, 'rgba(210,225,255,0.75)', 'center', 700);
+  text(ctx, playStyleOf(s.style).serveHint, x, y + 14, 12, 'rgba(210,225,255,0.75)', 'center', 700);
   ctx.restore();
 }
 

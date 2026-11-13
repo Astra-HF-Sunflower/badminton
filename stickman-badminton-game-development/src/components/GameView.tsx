@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Game, GameOptions, GameStatus } from '../game/engine';
+import { shotsFor } from '../game/shots';
 import { TouchControls } from './TouchControls';
 
 interface Props {
@@ -49,7 +50,9 @@ function PanelButton({ onClick, primary, children }: { onClick: () => void; prim
 export function GameView({ options, muted, onToggleMute, onRestart, onExit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
-  const [status, setStatus] = useState<GameStatus>({ phase: 'playing', winner: null, score: [0, 0], names: ['', ''] });
+  const [status, setStatus] = useState<GameStatus>({
+    phase: 'playing', winner: null, score: [0, 0], names: ['', ''], style: options.style, styleLabel: '',
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -64,6 +67,7 @@ export function GameView({ options, muted, onToggleMute, onRestart, onExit }: Pr
 
   const game = () => gameRef.current;
   const touch = isTouch() && options.mode === 'single';
+  const shots = shotsFor(options.style);
   const winnerName = status.winner === null ? '' : status.names[status.winner];
 
   return (
@@ -76,12 +80,17 @@ export function GameView({ options, muted, onToggleMute, onRestart, onExit }: Pr
         <IconBtn label="返回菜单" onClick={onExit}>✕</IconBtn>
       </div>
 
-      {touch && status.phase === 'playing' && <TouchControls onKey={(c, d) => game()?.virtualKey(c, d)} />}
+      {touch && status.phase === 'playing' && (
+        <TouchControls shots={shots} onKey={(c, d) => game()?.virtualKey(c, d)} />
+      )}
 
       {status.phase === 'paused' && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
           <div className="w-[min(88vw,360px)] space-y-3 rounded-3xl border border-white/10 bg-slate-900/90 p-7 text-center shadow-2xl">
-            <div className="mb-2 text-3xl font-black text-white">已暂停</div>
+            <div className="mb-1 text-3xl font-black text-white">已暂停</div>
+            <div className="mb-2 text-xs font-bold tracking-[0.16em] text-cyan-300/80">
+              {status.styleLabel} · {shots.length} 种击球
+            </div>
             <PanelButton primary onClick={() => game()?.setPaused(false)}>继续比赛</PanelButton>
             <PanelButton onClick={onRestart}>重新开始</PanelButton>
             <PanelButton onClick={onExit}>返回主菜单</PanelButton>

@@ -1,7 +1,7 @@
 import { GROUND, NET_X, clamp, rand } from './constants';
 import type { Intent, Player } from './player';
 import { predict } from './physics';
-import { SHOT_BY_ID, ShotId } from './shots';
+import { PlayStyle, SHOT_BY_ID, ShotId, shotIdsFor } from './shots';
 import type { Shuttle } from './shuttle';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
@@ -30,6 +30,19 @@ interface Plan {
   stamp: number;
 }
 
+/** 普通模式没有的球被选中时，换成同一用途的基础击球 */
+const SUBSTITUTE: Record<ShotId, ShotId> = {
+  clear: 'clear',
+  smash: 'smash',
+  drive: 'drive',
+  lift: 'lift',
+  drop: 'drive',
+  net: 'lift',
+  flick: 'lift',
+  jumpSmash: 'smash',
+  cut: 'smash',
+};
+
 const pick = (list: [ShotId, number][]): ShotId => {
   const total = list.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
@@ -40,14 +53,23 @@ const pick = (list: [ShotId, number][]): ShotId => {
 /** 电脑对手：预测落点 → 跑位 → 按挥拍前摇提前出手 */
 export class AIController {
   private cfg: Cfg;
+  private readonly allowed: Set<ShotId>;
   private plan: Plan | null = null;
   private replan = 0;
   private clock = 0;
   private serveWait = rand(0.9, 1.4);
   private idleX: number | null = null;
 
-  constructor(difficulty: Difficulty) {
+  constructor(difficulty: Difficulty, style: PlayStyle = 'pro') {
     this.cfg = CFG[difficulty];
+    this.allowed = new Set(shotIdsFor(style));
+  }
+
+  /** 只用本玩法模式开放的击球 */
+  private resolve(id: ShotId): ShotId {
+    if (this.allowed.has(id)) return id;
+    const alt = SUBSTITUTE[id] ?? 'clear';
+    return this.allowed.has(alt) ? alt : [...this.allowed][0];
   }
 
   get speedMul() {
@@ -73,7 +95,10 @@ export class AIController {
       goTo(shuttle.held === me.side ? homeX - f * 60 : homeX);
       if (shuttle.held === me.side && !me.swing) {
         this.serveWait -= dt;
-        if (this.serveWait <= 0) intent.shot = Math.random() < 0.6 ? 'clear' : 'net';
+        if (this.serveWait <= 0) {
+          const short = this.allowed.has('drive') ? 'drive' : 'net';
+          intent.shot = Math.random() < 0.6 ? 'clear' : this.resolve(short);
+        }
       }
       return intent;
     }
@@ -112,7 +137,8 @@ export class AIController {
   private makePlan(me: Player, s: Shuttle): Plan | null {
     const f = me.facing;
     const err = this.cfg.err;
-    const make = (shot: ShotId, relY: number): Plan | null => {
+    const make = (id: ShotId, relY: number): Plan | null => {
+      const shot = this.resolve(id);
       const r = predict(s, { atY: GROUND - relY, maxT: 3.5 });
       if ((r.x - NET_X) * f > -20) return null; // 球不会落到自己半场
       return { shot, x: clamp(r.x + rand(-err, err), me.minX, me.maxX), y: r.y, t: r.t, stamp: this.clock };

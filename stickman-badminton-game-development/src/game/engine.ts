@@ -3,18 +3,20 @@ import {
   COURT_L, COURT_R, GROUND, NET_TOP, NET_X, PLAYER, SHUTTLE_R, Side, clamp, opponent, rand, sideSign,
 } from './constants';
 import { Fx } from './fx';
-import { Input, Keymap, P1_KEYS, P2_KEYS, SOLO_KEYS } from './input';
+import { Input, Keymap, p1Keys, p2Keys, soloKeys } from './input';
 import { landingX, solveShot, stepBody } from './physics';
 import { Intent, Player, ServeKind, Swing } from './player';
 import { Banner, LandingMark, Scene, drawScene } from './render/scene';
 import { sfx } from './audio';
-import { SERVES, SERVE_SHORT_SHOTS, ShotId } from './shots';
+import { PlayStyle, SERVES, ShotDef, ShotId, playStyleOf, serveShortShots, shotsFor } from './shots';
 import { createShuttle, Shuttle } from './shuttle';
 
 export type Mode = 'single' | 'double';
 
 export interface GameOptions {
   mode: Mode;
+  /** 普通模式（4 种基础击球）/ 专业模式（9 种进阶击球） */
+  style: PlayStyle;
   difficulty: Difficulty;
   target: number;
 }
@@ -24,6 +26,8 @@ export interface GameStatus {
   winner: Side | null;
   score: [number, number];
   names: [string, string];
+  style: PlayStyle;
+  styleLabel: string;
 }
 
 const MAX_SUBSTEP = 1 / 120;
@@ -33,6 +37,10 @@ const POINT_DELAY = 2.1;
 export class Game implements Scene {
   time = 0;
   readonly mode: Mode;
+  readonly style: PlayStyle;
+  readonly styleLabel: string;
+  /** 本玩法模式下可用的击球（HUD / 触屏按钮据此渲染） */
+  readonly shots: ShotDef[];
   readonly difficultyLabel: string;
   phase: Phase = 'serve';
   readonly players: [Player, Player];
@@ -75,6 +83,9 @@ export class Game implements Scene {
     private readonly onStatus: (s: GameStatus) => void,
   ) {
     this.mode = opts.mode;
+    this.style = opts.style;
+    this.styleLabel = playStyleOf(opts.style).label;
+    this.shots = shotsFor(opts.style);
     this.target = opts.target;
     this.difficultyLabel = DIFFICULTY_LABEL[opts.difficulty];
     const single = opts.mode === 'single';
@@ -83,8 +94,8 @@ export class Game implements Scene {
       new Player(0, single ? '你' : 'P1', '#38bdf8', PLAYER.homeX[0]),
       new Player(1, single ? '电脑' : 'P2', '#fb7185', PLAYER.homeX[1]),
     ];
-    this.keymaps = single ? [SOLO_KEYS, null] : [P1_KEYS, P2_KEYS];
-    this.ai = single ? new AIController(opts.difficulty) : null;
+    this.keymaps = single ? [soloKeys(opts.style), null] : [p1Keys(opts.style), p2Keys(opts.style)];
+    this.ai = single ? new AIController(opts.difficulty, opts.style) : null;
     if (this.ai) this.players[1].speedMul = this.ai.speedMul;
 
     this.input.onSystemKey = () => this.togglePause();
@@ -142,6 +153,8 @@ export class Game implements Scene {
       winner: this.winner,
       score: [...this.score],
       names: [this.players[0].name, this.players[1].name],
+      style: this.style,
+      styleLabel: this.styleLabel,
     });
   }
 
@@ -238,7 +251,7 @@ export class Game implements Scene {
     if (this.phase === 'point' || this.phase === 'over') return false;
     if (this.phase === 'serve') {
       if (this.shuttle.held !== side) return false;
-      return SERVE_SHORT_SHOTS.includes(id) ? 'short' : 'high';
+      return serveShortShots(this.style).includes(id) ? 'short' : 'high';
     }
     return null;
   }

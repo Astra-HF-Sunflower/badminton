@@ -1,4 +1,4 @@
-import { SHOTS, ShotId } from './shots';
+import { PlayStyle, ShotId, shotsFor } from './shots';
 
 export interface Keymap {
   left: string[];
@@ -7,9 +7,9 @@ export interface Keymap {
   shots: Map<string, ShotId>;
 }
 
-const shotMap = (field: 'numpad' | 'alt', both = false) => {
+const shotMap = (style: PlayStyle, field: 'numpad' | 'alt', both = false) => {
   const m = new Map<string, ShotId>();
-  for (const s of SHOTS) {
+  for (const s of shotsFor(style)) {
     if (field === 'numpad' || both) m.set(s.numpad, s.id);
     if (field === 'alt' || both) m.set(s.alt, s.id);
   }
@@ -17,26 +17,26 @@ const shotMap = (field: 'numpad' | 'alt', both = false) => {
 };
 
 /** 单人：小键盘 + 镜像键位都可用 */
-export const SOLO_KEYS: Keymap = {
+export const soloKeys = (style: PlayStyle): Keymap => ({
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   jump: ['KeyW', 'ArrowUp', 'Space', 'Numpad0'],
-  shots: shotMap('numpad', true),
-};
+  shots: shotMap(style, 'numpad', true),
+});
 /** 双人 P1：WASD + UIO/JKL/M,. */
-export const P1_KEYS: Keymap = {
+export const p1Keys = (style: PlayStyle): Keymap => ({
   left: ['KeyA'],
   right: ['KeyD'],
   jump: ['KeyW', 'Space'],
-  shots: shotMap('alt'),
-};
+  shots: shotMap(style, 'alt'),
+});
 /** 双人 P2：方向键 + 数字小键盘 */
-export const P2_KEYS: Keymap = {
+export const p2Keys = (style: PlayStyle): Keymap => ({
   left: ['ArrowLeft'],
   right: ['ArrowRight'],
   jump: ['ArrowUp', 'Numpad0'],
-  shots: shotMap('numpad'),
-};
+  shots: shotMap(style, 'numpad'),
+});
 
 const BLOCKED = /^(Arrow|Numpad|Space|Key[A-Z]|Comma|Period|Digit)/;
 

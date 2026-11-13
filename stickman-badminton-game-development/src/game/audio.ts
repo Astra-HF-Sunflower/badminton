@@ -1,3 +1,4 @@
+import { bgm } from './bgm';
 import type { ShotId } from './shots';
 
 interface ToneOpts {
@@ -43,11 +44,19 @@ class AudioEngine {
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    // 背景音乐共用同一套 AudioContext / 总音量
+    bgm.attach(this.ctx, this.master);
+  }
+
+  /** 供 BGM 等模块复用的音频上下文（未初始化时为 null） */
+  get context() {
+    return this.ctx;
   }
 
   setMuted(m: boolean) {
     this.muted = m;
     if (this.ctx) this.master.gain.value = m ? 0 : 0.9;
+    bgm.setMuted(m);
   }
 
   private tone(freq: number, dur: number, o: ToneOpts = {}) {
