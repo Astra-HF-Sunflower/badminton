@@ -1,7 +1,7 @@
 {
-  "name": "react-vite-tailwind",
+  "name": "stickman-badminton",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,5 +24,6 @@
     "typescript": "5.9.3",
     "vite": "7.3.7",
     "vite-plugin-singlefile": "2.3.0"
-  }
+  },
+  "description": "火柴人羽毛球 · 一个用 React + Canvas 写的网页羽毛球游戏"
 }
