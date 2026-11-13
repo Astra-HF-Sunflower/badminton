@@ -1,4 +1,5 @@
-import { COURT_L, COURT_R, NET_X, PLAYER, Side, approach, clamp, sideSign } from './constants';
+import { NET_X, PLAYER, Side, approach, clamp, sideSign } from './constants';
+import { CourtDef } from './court';
 import { computePose, Pose, Vec } from './pose';
 import { SHOT_BY_ID, ShotDef, ShotId } from './shots';
 import type { SwingKey } from './swings';
@@ -61,11 +62,13 @@ export class Player {
     readonly name: string,
     readonly color: string,
     startX: number,
+    court: CourtDef,
   ) {
     this.facing = sideSign(side);
     this.x = startX;
-    this.minX = side === 0 ? COURT_L - 70 : NET_X + 50;
-    this.maxX = side === 0 ? NET_X - 50 : COURT_R + 70;
+    // 活动范围：从底线外一点点到网前 50px
+    this.minX = side === 0 ? court.l - 70 : NET_X + 50;
+    this.maxX = side === 0 ? NET_X - 50 : court.r + 70;
     this.pose = computePose(this, 0);
   }
 

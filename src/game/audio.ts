@@ -114,6 +114,9 @@ class AudioEngine {
       flick: [1500, 4200, 0.12],
       jumpSmash: [300, 2800, 0.24],
       cut: [1800, 800, 0.13],
+      thunderSmash: [200, 4200, 0.3],
+      superRebound: [1200, 3200, 0.16],
+      shockwave: [500, 3600, 0.26],
     };
     const [a, b, v] = base[id];
     this.noise(duration * 0.5, { freq: a, to: b, q: 1.4, vol: v, delay: duration * 0.08 });
@@ -167,6 +170,22 @@ class AudioEngine {
         this.tone(650, 0.1, { to: 250, vol: 0.3 * k, type: 'triangle' });
         this.tone(1750, 0.06, { to: 1100, vol: 0.12 * k, type: 'square', delay: 0.01 });
         break;
+      case 'thunderSmash':
+        this.noise(0.2, { freq: 3000, to: 120, q: 0.5, vol: 1 });
+        this.tone(90, 0.6, { to: 28, vol: 1, type: 'sawtooth' });
+        this.tone(1200, 0.08, { to: 120, vol: 0.5, type: 'square' });
+        this.noise(0.7, { type: 'lowpass', freq: 2200, to: 90, q: 0.4, vol: 0.6, delay: 0.04 });
+        break;
+      case 'superRebound':
+        this.noise(0.08, { freq: 2600, q: 1, vol: 0.5 * k });
+        this.tone(300, 0.18, { to: 900, vol: 0.4 * k, type: 'triangle' });
+        this.tone(1200, 0.3, { to: 2400, vol: 0.08, delay: 0.04 });
+        break;
+      case 'shockwave':
+        this.noise(0.16, { type: 'lowpass', freq: 1600, to: 180, q: 0.6, vol: 0.85 * k });
+        this.tone(160, 0.4, { to: 48, vol: 0.7 * k, type: 'sine' });
+        this.tone(2400, 0.1, { to: 320, vol: 0.22 * k, type: 'sawtooth' });
+        break;
     }
     if (perfect) {
       this.tone(1568, 0.16, { vol: 0.14, delay: 0.04, type: 'triangle' });
@@ -179,6 +198,13 @@ class AudioEngine {
   serve() {
     this.noise(0.05, { freq: 1800, q: 1, vol: 0.3 });
     this.tone(520, 0.1, { to: 300, vol: 0.28 });
+  }
+
+  /** 超级反弹：弹起的清脆回升音 */
+  bounce() {
+    this.tone(300, 0.18, { to: 980, vol: 0.26, type: 'triangle' });
+    this.tone(1350, 0.34, { to: 2500, vol: 0.09, delay: 0.05 });
+    this.noise(0.12, { freq: 2000, q: 1.2, vol: 0.3 });
   }
 
   whiff() {

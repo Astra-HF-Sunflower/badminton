@@ -1,7 +1,6 @@
 import { AIController, DIFFICULTY_LABEL, Difficulty, Phase } from './ai';
-import {
-  COURT_L, COURT_R, GROUND, NET_TOP, NET_X, PLAYER, SHUTTLE_R, Side, clamp, opponent, rand, sideSign,
-} from './constants';
+import { GROUND, NET_TOP, NET_X, PLAYER, SHUTTLE_R, Side, clamp, opponent, rand, sideSign } from './constants';
+import { CourtDef, CourtSize, courtHomeX, courtOf } from './court';
 import { Fx } from './fx';
 import { Input, Keymap, p1Keys, p2Keys, soloKeys } from './input';
 import { landingX, solveShot, stepBody } from './physics';
@@ -15,8 +14,10 @@ export type Mode = 'single' | 'double';
 
 export interface GameOptions {
   mode: Mode;
-  /** 普通模式（4 种基础击球）/ 专业模式（9 种进阶击球） */
+  /** 普通模式（4 种基础击球）/ 专业模式（9 种进阶击球）/ 恶搞模式（暴走三招） */
   style: PlayStyle;
+  /** 场地大小：小 / 中 / 大 */
+  court: CourtSize;
   difficulty: Difficulty;
   target: number;
 }
@@ -28,6 +29,7 @@ export interface GameStatus {
   names: [string, string];
   style: PlayStyle;
   styleLabel: string;
+  courtLabel: string;
 }
 
 const MAX_SUBSTEP = 1 / 120;
@@ -39,6 +41,12 @@ export class Game implements Scene {
   readonly mode: Mode;
   readonly style: PlayStyle;
   readonly styleLabel: string;
+  readonly court: CourtDef;
+  readonly courtLabel: string;
+  /** 双方默认站位（随场地宽度变化） */
+  readonly homeX: [number, number];
+  /** 双方各类击球的出手次数，用于头顶的「招式占比」 */
+  readonly usage: [Map<ShotId, number>, Map<ShotId, number>] = [new Map(), new Map()];
   /** 本玩法模式下可用的击球（HUD / 触屏按钮据此渲染） */
   readonly shots: ShotDef[];
   readonly difficultyLabel: string;
@@ -86,13 +94,16 @@ export class Game implements Scene {
     this.style = opts.style;
     this.styleLabel = playStyleOf(opts.style).label;
     this.shots = shotsFor(opts.style);
+    this.court = courtOf(opts.court);
+    this.courtLabel = this.court.label;
+    this.homeX = [courtHomeX(this.court, 0), courtHomeX(this.court, 1)];
     this.target = opts.target;
     this.difficultyLabel = DIFFICULTY_LABEL[opts.difficulty];
     const single = opts.mode === 'single';
     this.humanSides = [true, !single];
     this.players = [
-      new Player(0, single ? '你' : 'P1', '#38bdf8', PLAYER.homeX[0]),
-      new Player(1, single ? '电脑' : 'P2', '#fb7185', PLAYER.homeX[1]),
+      new Player(0, single ? '你' : 'P1', '#38bdf8', this.homeX[0], this.court),
+      new Player(1, single ? '电脑' : 'P2', '#fb7185', this.homeX[1], this.court),
     ];
     this.keymaps = single ? [soloKeys(opts.style), null] : [p1Keys(opts.style), p2Keys(opts.style)];
     this.ai = single ? new AIController(opts.difficulty, opts.style) : null;
@@ -155,6 +166,7 @@ export class Game implements Scene {
       names: [this.players[0].name, this.players[1].name],
       style: this.style,
       styleLabel: this.styleLabel,
+      courtLabel: this.courtLabel,
     });
   }
 
@@ -204,7 +216,7 @@ export class Game implements Scene {
         const move = (this.input.isDown(km.right) ? 1 : 0) - (this.input.isDown(km.left) ? 1 : 0);
         return { move, jump: pressed[side]?.jump ?? false, shot: pressed[side]?.shot ?? null };
       }
-      return this.ai!.decide(dt, me, players[opponent(side)], sh, this.phase, PLAYER.homeX[side]);
+      return this.ai!.decide(dt, me, players[opponent(side)], sh, this.phase, this.homeX[side]);
     });
 
     // —— 球拍对准来球 ——
@@ -243,7 +255,7 @@ export class Game implements Scene {
   }
 
   private walkHome(p: Player, go: boolean): Intent {
-    const dx = PLAYER.homeX[p.side] - p.x;
+    const dx = this.homeX[p.side] - p.x;
     return { move: go && Math.abs(dx) > 8 ? clamp(dx / 70, -0.7, 0.7) : 0, jump: false, shot: null };
   }
 
@@ -289,12 +301,13 @@ export class Game implements Scene {
     sh.lastShot = null;
     sh.perfect = false;
     sh.poor = false;
+    sh.rebounds = 0;
     sh.trail.length = 0;
     sh.vx = 0;
     sh.vy = 0;
     sh.spin = 0;
     for (const p of this.players) {
-      if (Math.abs(p.x - PLAYER.homeX[p.side]) > 90) p.x = PLAYER.homeX[p.side];
+      if (Math.abs(p.x - this.homeX[p.side]) > 90) p.x = this.homeX[p.side];
       p.swing = null;
       p.buffered = null;
     }
@@ -408,7 +421,7 @@ export class Game implements Scene {
     if (!serve && (shot.id === 'smash' || shot.id === 'jumpSmash' || shot.id === 'cut')) depth += rand(-0.1, 0.1);
     depth += clamp(p.moveInput * p.facing, -1, 1) * 0.1;
     const jitter = serve || perfect ? 0 : poor ? rand(-150, 150) : rand(-26, 26);
-    const targetX = landingX(p.side, clamp(depth, 0.02, 1.04)) + jitter;
+    const targetX = landingX(p.side, clamp(depth, 0.02, 1.04), this.court) + jitter;
     const prof = serve ? SERVES[serve] : shot;
     const v = solveShot({
       x: sh.x, y: sh.y, side: p.side, speed: prof.speed * (poor ? 0.85 : 1), targetX, arc: prof.arc, margin: prof.margin,
@@ -419,6 +432,12 @@ export class Game implements Scene {
     sh.held = null;
     sh.lastHitter = p.side;
     sh.lastShot = serve ? null : shot;
+    sh.rebounds = serve ? 0 : shot.rebound ?? 0;
+    // 招式占比统计（发球不算）
+    if (!serve) {
+      const tally = this.usage[p.side];
+      tally.set(shot.id, (tally.get(shot.id) ?? 0) + 1);
+    }
     sh.perfect = perfect;
     sh.poor = poor;
     sh.angle = Math.atan2(v.vy, v.vx) + Math.PI * 0.9; // 先翻转再朝前
@@ -445,6 +464,14 @@ export class Game implements Scene {
         this.hitStop = Math.max(this.hitStop, shot.hitStop);
         this.slowTimer = Math.max(this.slowTimer, shot.slowmo);
       }
+      // 冲击波：把对手震退
+      if (shot.push) {
+        const foe = this.players[opponent(p.side)];
+        foe.vx += sideSign(p.side) * shot.push;
+        this.fx.ring(foe.x, GROUND - 96, shot.color, 130, 0.5);
+        this.fx.text(foe.x, foe.pose.head.y - 34, '震退!', shot.color, 26, 0.85);
+        this.fx.shake = Math.max(this.fx.shake, 10);
+      }
       const big = shot.points >= 3;
       this.fx.text(sh.x, sh.y - 56, poor ? '勉强' : shot.name, poor ? '#aab4c8' : shot.color, big ? 46 : 34, big ? 1.2 : 0.95);
       if (perfect) this.fx.text(sh.x, sh.y - 100, 'PERFECT', '#ffe27a', 24, 0.9);
@@ -459,7 +486,7 @@ export class Game implements Scene {
     const x = sh.x;
     const hitter = sh.lastHitter;
     if (hitter === null) return;
-    const inBounds = x >= COURT_L && x <= COURT_R;
+    const inBounds = x >= this.court.l && x <= this.court.r;
     const landSide: Side = x < NET_X ? 0 : 1;
 
     let winner: Side;
@@ -492,6 +519,29 @@ export class Game implements Scene {
         sub = '+1 分';
         color = '#ffffff';
       }
+    }
+
+    // —— 恶搞模式：超级反弹，落地不算分，球弹回半场继续打 ——
+    if (ok && sh.rebounds > 0) {
+      sh.rebounds -= 1;
+      sh.y = GROUND - SHUTTLE_R - 4;
+      sh.vy = -1750;
+      sh.vx = -sh.vx * 0.85;
+      sh.angle = Math.atan2(sh.vy, sh.vx);
+      sh.lastHitter = opponent(hitter); // 球被“弹”回去了，轮到对方处理
+      this.fx.text(x, GROUND - 110, '超级反弹!', '#7cf7ff', 42, 1.3);
+      this.fx.floorRing(x, '#7cf7ff', 140);
+      this.fx.sparks(x, GROUND - 14, '#7cf7ff', 16, 460, { angle: -Math.PI / 2, spread: 1.5 });
+      this.fx.shake = Math.max(this.fx.shake, 8);
+      sfx.bounce();
+      this.excite = Math.min(1, this.excite + 0.2);
+      return;
+    }
+
+    // —— 恶搞模式：得分翻倍 ——
+    if (ok && this.style === 'meme') {
+      points *= 2;
+      sub = `+${points} 分 · 暴走加成`;
     }
 
     this.score[winner] += points;

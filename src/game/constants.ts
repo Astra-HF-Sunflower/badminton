@@ -6,8 +6,6 @@ export const GROUND = 700; // 球员脚底所在的“地面线”
 export const NET_X = 800;
 export const NET_H = 160;
 export const NET_TOP = GROUND - NET_H;
-export const COURT_L = 130;
-export const COURT_R = 1470;
 
 /** 羽毛球物理：重力 + 二次空气阻力（落地陡、出手快后迅速减速） */
 export const GRAVITY = 1100;
@@ -26,7 +24,6 @@ export const PLAYER = {
   legLen: 84,
   torso: 58,
   racketCenter: 58,
-  homeX: [380, 1220] as const,
 };
 
 export type Side = 0 | 1;

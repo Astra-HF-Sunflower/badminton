@@ -51,7 +51,7 @@ export function GameView({ options, muted, onToggleMute, onRestart, onExit }: Pr
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const [status, setStatus] = useState<GameStatus>({
-    phase: 'playing', winner: null, score: [0, 0], names: ['', ''], style: options.style, styleLabel: '',
+    phase: 'playing', winner: null, score: [0, 0], names: ['', ''], style: options.style, styleLabel: '', courtLabel: '',
   });
 
   useEffect(() => {
@@ -89,7 +89,7 @@ export function GameView({ options, muted, onToggleMute, onRestart, onExit }: Pr
           <div className="w-[min(88vw,360px)] space-y-3 rounded-3xl border border-white/10 bg-slate-900/90 p-7 text-center shadow-2xl">
             <div className="mb-1 text-3xl font-black text-white">已暂停</div>
             <div className="mb-2 text-xs font-bold tracking-[0.16em] text-cyan-300/80">
-              {status.styleLabel} · {shots.length} 种击球
+              {status.styleLabel} · {status.courtLabel} · {shots.length} 种击球
             </div>
             <PanelButton primary onClick={() => game()?.setPaused(false)}>继续比赛</PanelButton>
             <PanelButton onClick={onRestart}>重新开始</PanelButton>

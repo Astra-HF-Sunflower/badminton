@@ -1,4 +1,5 @@
-import { DRAG, GRAVITY, GROUND, NET_TOP, NET_X, SHUTTLE_R, STEP, Side, COURT_L, COURT_R, sideSign } from './constants';
+import { DRAG, GRAVITY, GROUND, NET_TOP, NET_X, SHUTTLE_R, STEP, Side, sideSign } from './constants';
+import { CourtDef, courtHalf } from './court';
 
 export interface Body {
   x: number;
@@ -128,9 +129,11 @@ export function predict(
   return { x: b.x, y: b.y, t, landed: false };
 }
 
-/** 目标落点：depth 0 贴网，1 贴底线 */
-export function landingX(side: Side, depth: number): number {
-  const half = (COURT_R - COURT_L) / 2;
-  const dist = 50 + depth * (half - 50 - 38);
+/** 目标落点：depth 0 贴网，1 贴底线（随场地大小自动缩放） */
+export function landingX(side: Side, depth: number, court: CourtDef): number {
+  const half = courtHalf(court);
+  const near = half * 0.12;
+  const far = half * 0.92;
+  const dist = near + depth * (far - near);
   return NET_X + sideSign(side) * dist;
 }

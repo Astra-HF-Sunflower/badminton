@@ -41,6 +41,9 @@ const SUBSTITUTE: Record<ShotId, ShotId> = {
   flick: 'lift',
   jumpSmash: 'smash',
   cut: 'smash',
+  thunderSmash: 'smash',
+  superRebound: 'clear',
+  shockwave: 'smash',
 };
 
 const pick = (list: [ShotId, number][]): ShotId => {
@@ -54,6 +57,7 @@ const pick = (list: [ShotId, number][]): ShotId => {
 export class AIController {
   private cfg: Cfg;
   private readonly allowed: Set<ShotId>;
+  private readonly meme: boolean;
   private plan: Plan | null = null;
   private replan = 0;
   private clock = 0;
@@ -63,6 +67,7 @@ export class AIController {
   constructor(difficulty: Difficulty, style: PlayStyle = 'pro') {
     this.cfg = CFG[difficulty];
     this.allowed = new Set(shotIdsFor(style));
+    this.meme = style === 'meme';
   }
 
   /** 只用本玩法模式开放的击球 */
@@ -143,6 +148,11 @@ export class AIController {
       if ((r.x - NET_X) * f > -20) return null; // 球不会落到自己半场
       return { shot, x: clamp(r.x + rand(-err, err), me.minX, me.maxX), y: r.y, t: r.t, stamp: this.clock };
     };
+    // 恶搞模式：电脑也爱放暴走三招
+    if (this.meme && Math.random() < 0.5) {
+      const wild = make(pick([['thunderSmash', 3], ['shockwave', 3], ['superRebound', 2]]), 270);
+      if (wild) return wild;
+    }
     const speed = Math.hypot(s.vx, s.vy);
     const netDist = Math.abs(me.x - NET_X);
     const homeDeep = netDist > 450;

@@ -1,4 +1,5 @@
-import { COURT_L, COURT_R, GROUND, H, NET_H, NET_TOP, NET_X, W } from '../constants';
+import { GROUND, H, NET_H, NET_TOP, NET_X, W } from '../constants';
+import { CourtDef } from '../court';
 
 const FLOOR_TOP = 646;
 const FAR = 658;
@@ -23,7 +24,7 @@ const CROWD = (() => {
 
 const ADS = ['SMASH', 'CLEAR', 'DROP', 'DRIVE', 'LIFT', 'NET', 'FLICK', 'SLICE'];
 
-export function drawBackground(ctx: CanvasRenderingContext2D, time: number, excite: number) {
+export function drawBackground(ctx: CanvasRenderingContext2D, time: number, excite: number, court: CourtDef) {
   // 墙面
   const wall = ctx.createLinearGradient(0, 0, 0, FLOOR_TOP);
   wall.addColorStop(0, '#08102a');
@@ -104,15 +105,15 @@ export function drawBackground(ctx: CanvasRenderingContext2D, time: number, exci
 
   // 球场底色
   ctx.beginPath();
-  ctx.moveTo(px(COURT_L, FAR), FAR);
-  ctx.lineTo(px(COURT_R, FAR), FAR);
-  ctx.lineTo(px(COURT_R, NEAR), NEAR);
-  ctx.lineTo(px(COURT_L, NEAR), NEAR);
+  ctx.moveTo(px(court.l, FAR), FAR);
+  ctx.lineTo(px(court.r, FAR), FAR);
+  ctx.lineTo(px(court.r, NEAR), NEAR);
+  ctx.lineTo(px(court.l, NEAR), NEAR);
   ctx.closePath();
-  const court = ctx.createLinearGradient(0, FAR, 0, NEAR);
-  court.addColorStop(0, '#2aa397');
-  court.addColorStop(1, '#1f8b86');
-  ctx.fillStyle = court;
+  const courtFill = ctx.createLinearGradient(0, FAR, 0, NEAR);
+  courtFill.addColorStop(0, '#2aa397');
+  courtFill.addColorStop(1, '#1f8b86');
+  ctx.fillStyle = courtFill;
   ctx.fill();
 
   // 球场线
@@ -126,25 +127,25 @@ export function drawBackground(ctx: CanvasRenderingContext2D, time: number, exci
     ctx.lineTo(px(x, NEAR), NEAR);
     ctx.stroke();
   };
-  vline(COURT_L);
-  vline(COURT_R);
+  vline(court.l);
+  vline(court.r);
   vline(NET_X - 198, 2.5);
   vline(NET_X + 198, 2.5);
   for (const y of [FAR, NEAR]) {
     ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.moveTo(px(COURT_L, y), y);
-    ctx.lineTo(px(COURT_R, y), y);
+    ctx.moveTo(px(court.l, y), y);
+    ctx.lineTo(px(court.r, y), y);
     ctx.stroke();
   }
   // 中线
   ctx.lineWidth = 2.5;
   const mid = (FAR + NEAR) / 2;
   ctx.beginPath();
-  ctx.moveTo(px(COURT_L, mid), mid);
+  ctx.moveTo(px(court.l, mid), mid);
   ctx.lineTo(px(NET_X - 198, mid), mid);
   ctx.moveTo(px(NET_X + 198, mid), mid);
-  ctx.lineTo(px(COURT_R, mid), mid);
+  ctx.lineTo(px(court.r, mid), mid);
   ctx.stroke();
 }
 

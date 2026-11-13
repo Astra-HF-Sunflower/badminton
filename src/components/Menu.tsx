@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Difficulty } from '../game/ai';
 import { bgm, BGM_TRACKS } from '../game/bgm';
+import { COURTS, CourtSize } from '../game/court';
 import type { GameOptions, Mode } from '../game/engine';
 import { sfx } from '../game/audio';
 import { PlayStyle, PLAYSTYLES, SHOTS, shotsFor } from '../game/shots';
@@ -53,18 +54,21 @@ const Label = ({ children }: { children: string }) => (
 export function Menu({ onStart, muted, onToggleMute }: Props) {
   const [mode, setMode] = useState<Mode>('single');
   const [style, setStyle] = useState<PlayStyle>('casual');
+  const [court, setCourt] = useState<CourtSize>('medium');
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [target, setTarget] = useState(21);
   const [musicId, setMusicId] = useState<string | null>(bgm.currentId);
   const [musicVol, setMusicVol] = useState(bgm.volume);
 
   const shots = shotsFor(style);
-  const lockedShots = SHOTS.filter((s) => !shots.includes(s));
+  const shotIds = new Set(shots.map((s) => s.id));
+  const lockedByPro = SHOTS.filter((s) => s.tier === 'pro' && !shotIds.has(s.id));
+  const lockedByMeme = SHOTS.filter((s) => s.tier === 'meme' && !shotIds.has(s.id));
 
   const start = () => {
     sfx.init();
     sfx.click();
-    onStart({ mode, style, difficulty, target });
+    onStart({ mode, style, court, difficulty, target });
   };
 
   const pickMusic = (id: string | null) => {
@@ -110,7 +114,9 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
           <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-400">
             {style === 'pro'
               ? '九种击球，各有专属挥拍、特效、音效与得分。抓住完美时机，用一记跳杀终结比赛。'
-              : '四种基础击球，上手就能打。想玩吊球、搓球、跳杀？切到专业模式解锁全部九种。'}
+              : style === 'meme'
+                ? '雷霆蓄力杀球、超级反弹、冲击波——不讲武德，得分还翻倍。'
+                : '四种基础击球，上手就能打。想玩吊球、搓球、跳杀？切到专业模式解锁全部九种。'}
           </p>
 
           <div className="mt-8 space-y-6">
@@ -129,9 +135,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">玩法</div>
-                <span className="text-[11px] font-bold text-cyan-300/80">
-                  {shots.length} / {SHOTS.length} 种击球
-                </span>
+                <span className="text-[11px] font-bold text-cyan-300/80">本局可用 {shots.length} 种击球</span>
               </div>
               <Seg
                 value={style}
@@ -139,6 +143,18 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                 options={PLAYSTYLES.map((p) => ({ value: p.id, label: p.label, sub: p.sub }))}
               />
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{PLAYSTYLES.find((p) => p.id === style)?.desc}</p>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">场地</div>
+                <span className="text-[11px] text-slate-500">{COURTS.find((c) => c.id === court)?.desc}</span>
+              </div>
+              <Seg
+                value={court}
+                onChange={setCourt}
+                options={COURTS.map((c) => ({ value: c.id, label: c.label, sub: c.sub }))}
+              />
             </div>
 
             {mode === 'single' && (
@@ -184,7 +200,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-black text-white">击球键位</h2>
               <span className="text-xs text-slate-400">
-                {style === 'casual' ? '普通模式 · 4 键' : '专业模式 · 9 键'}
+                {`${PLAYSTYLES.find((p) => p.id === style)?.label} · ${shots.length} 键`}
               </span>
             </div>
             {mode === 'single' ? (
@@ -221,7 +237,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <h2 className="mb-3 text-base font-black text-white">
               击球一览
               <span className="ml-2 text-xs font-bold text-slate-400">
-                {style === 'casual' ? '普通模式 · 基础' : '专业模式 · 进阶'}
+                {PLAYSTYLES.find((p) => p.id === style)?.sub}
               </span>
             </h2>
             <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -236,18 +252,36 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                 </div>
               ))}
             </div>
-            {lockedShots.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
-                <span className="text-[11px] font-bold text-slate-500">专业模式解锁：</span>
-                {lockedShots.map((s) => (
-                  <span
-                    key={s.id}
-                    className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold text-slate-400"
-                    title={s.desc}
-                  >
-                    🔒 {s.name}
-                  </span>
-                ))}
+            {(lockedByPro.length > 0 || lockedByMeme.length > 0) && (
+              <div className="mt-3 space-y-1.5 border-t border-white/10 pt-3">
+                {lockedByPro.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500">专业模式解锁：</span>
+                    {lockedByPro.map((s) => (
+                      <span
+                        key={s.id}
+                        className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold text-slate-400"
+                        title={s.desc}
+                      >
+                        🔒 {s.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {lockedByMeme.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-fuchsia-300/70">恶搞模式解锁：</span>
+                    {lockedByMeme.map((s) => (
+                      <span
+                        key={s.id}
+                        className="rounded-md bg-fuchsia-400/10 px-2 py-0.5 text-[11px] font-bold text-fuchsia-200/90"
+                        title={s.desc}
+                      >
+                        💥 {s.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <p className="mt-3 border-t border-white/10 pt-3 text-xs leading-relaxed text-slate-400">

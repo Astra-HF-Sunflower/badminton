@@ -1,5 +1,5 @@
-import { GROUND, Side, W } from '../constants';
-import { playStyleOf } from '../shots';
+import { GROUND, Side, W, clamp } from '../constants';
+import { SHOT_BY_ID, playStyleOf } from '../shots';
 import type { Scene } from './scene';
 
 const FONT = "'PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif";
@@ -49,7 +49,7 @@ function drawScoreboard(ctx: CanvasRenderingContext2D, s: Scene) {
     text(ctx, String(s.score[side]), 0, 0, 46, pop > 0.05 ? p.color : '#ffffff', 'center', 900);
     ctx.restore();
   });
-  text(ctx, `先到 ${s.target} 分`, cx, 40, 14, 'rgba(210,225,255,0.65)', 'center', 700);
+  text(ctx, `${s.court.label} · 先到 ${s.target} 分`, cx, 40, 14, 'rgba(210,225,255,0.65)', 'center', 700);
   text(ctx, ':', cx, 74, 40, 'rgba(255,255,255,0.35)', 'center', 900);
 
   if (s.rally >= 3 && s.phase === 'rally') {
@@ -58,6 +58,50 @@ function drawScoreboard(ctx: CanvasRenderingContext2D, s: Scene) {
     panel(ctx, cx - 74, 114, 148, 34, 17, 0.5);
     text(ctx, `连续回合 ${s.rally}`, cx, 132, 16, col);
   }
+}
+
+/** 头顶的「招式占比」：堆叠比例条 + 使用最多的前三招 */
+function drawUsage(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
+  const tally = s.usage[side];
+  let total = 0;
+  for (const n of tally.values()) total += n;
+  if (total === 0) return;
+
+  const sorted = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 3);
+  const h = 22 + top.length * 14;
+  const w = 152;
+  const x = clamp(s.players[side].pose.head.x, 90, W - 90);
+  const y = clamp(s.players[side].pose.head.y - h - 52, 168, GROUND - 210);
+
+  panel(ctx, x - w / 2, y, w, h, 11, 0.45);
+  text(ctx, `出招 ${total} 次`, x, y + 12, 10.5, 'rgba(226,238,255,0.92)', 'center', 800);
+
+  const bx = x - w / 2 + 9;
+  const bw = w - 18;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(bx, y + 20, bw, 4.5, 2.5);
+  ctx.clip();
+  let cur = bx;
+  for (const [id, n] of sorted) {
+    const seg = (bw * n) / total;
+    ctx.fillStyle = SHOT_BY_ID[id].color;
+    ctx.fillRect(cur, y + 20, Math.max(1, seg), 4.5);
+    cur += seg;
+  }
+  ctx.restore();
+
+  top.forEach(([id, n], i) => {
+    const shot = SHOT_BY_ID[id];
+    const yy = y + 35 + i * 14;
+    ctx.beginPath();
+    ctx.arc(bx + 3, yy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = shot.color;
+    ctx.fill();
+    text(ctx, shot.name, bx + 10, yy, 10.5, '#eef4ff', 'left', 800);
+    text(ctx, `${Math.round((n / total) * 100)}%`, x + w / 2 - 9, yy, 10.5, shot.color, 'right', 900);
+  });
 }
 
 function drawLegend(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
@@ -192,6 +236,8 @@ function drawOffscreen(ctx: CanvasRenderingContext2D, s: Scene) {
 
 export function drawHud(ctx: CanvasRenderingContext2D, s: Scene) {
   drawScoreboard(ctx, s);
+  drawUsage(ctx, s, 0);
+  drawUsage(ctx, s, 1);
   drawLegend(ctx, s, 0);
   if (s.mode === 'double') drawLegend(ctx, s, 1);
   else drawTips(ctx, s);

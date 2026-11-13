@@ -2,7 +2,8 @@ import { GROUND, H, W, clamp } from '../constants';
 import type { Phase } from '../ai';
 import type { Fx } from '../fx';
 import type { Player } from '../player';
-import type { PlayStyle, ShotDef } from '../shots';
+import type { CourtDef } from '../court';
+import type { PlayStyle, ShotDef, ShotId } from '../shots';
 import type { Shuttle } from '../shuttle';
 import { drawBackground, drawNet } from './background';
 import { drawHud } from './hud';
@@ -28,6 +29,10 @@ export interface Scene {
   style: PlayStyle;
   /** 本局可用的击球 */
   shots: ShotDef[];
+  /** 场地大小 */
+  court: CourtDef;
+  /** 双方各类击球的出手次数 */
+  usage: Map<ShotId, number>[];
   difficultyLabel: string;
   phase: Phase;
   players: [Player, Player];
@@ -132,7 +137,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, s: Scene, cw: number, c
   ctx.rect(-20, -20, W + 40, H + 40);
   ctx.clip();
 
-  drawBackground(ctx, s.time, s.excite);
+  drawBackground(ctx, s.time, s.excite, s.court);
 
   // 落点标记
   for (const m of s.marks) {

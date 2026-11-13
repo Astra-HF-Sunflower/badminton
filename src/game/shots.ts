@@ -7,12 +7,16 @@ export type ShotId =
   | 'net'
   | 'flick'
   | 'jumpSmash'
-  | 'cut';
+  | 'cut'
+  // —— 恶搞模式专属 ——
+  | 'thunderSmash'
+  | 'superRebound'
+  | 'shockwave';
 
 export type FxKind = 'wind' | 'fire' | 'leaf' | 'bolt' | 'bubble' | 'swirl' | 'slash' | 'thunder' | 'crescent';
 
-/** 击球分类：basic = 普通模式可见的基础击球，pro = 专业模式追加的进阶击球 */
-export type ShotTier = 'basic' | 'pro';
+/** 击球分类：basic = 普通模式的基础击球，pro = 专业模式追加，meme = 恶搞模式专属 */
+export type ShotTier = 'basic' | 'pro' | 'meme';
 
 export interface ShotDef {
   id: ShotId;
@@ -47,6 +51,10 @@ export interface ShotDef {
   hitStop: number;
   slowmo: number;
   spin: number;
+  /** 恶搞模式：落地后弹回几次（超级反弹） */
+  rebound?: number;
+  /** 恶搞模式：命中后把对手震退的力度 */
+  push?: number;
 }
 
 export const SHOTS: ShotDef[] = [
@@ -113,6 +121,29 @@ export const SHOTS: ShotDef[] = [
     duration: 0.42, strike: 0.38, delay: 0, zone: [120, 420],
     fx: 'crescent', shake: 4, hitStop: 0.035, slowmo: 0, spin: 6,
   },
+
+  /* ————————— 恶搞模式：不讲道理的三招 ————————— */
+  {
+    id: 'thunderSmash', tier: 'meme', name: '雷霆蓄力杀球', en: 'Thunder Smash', desc: '蓄力 0.7 秒，雷声一响就把球砸穿',
+    numpad: 'Numpad7', alt: 'KeyU', keyLabel: '7', altLabel: 'U', row: 0, col: 0,
+    points: 6, color: '#ffd93d', speed: 5200, depth: 0.56, arc: 'flat', margin: 26,
+    duration: 1.02, strike: 0.72, delay: 0, zone: [240, 480],
+    fx: 'thunder', shake: 30, hitStop: 0.13, slowmo: 0.45, spin: 0,
+  },
+  {
+    id: 'superRebound', tier: 'meme', name: '超级反弹', en: 'Super Rebound', desc: '落地不算分，球会弹回半空继续打',
+    numpad: 'Numpad9', alt: 'KeyO', keyLabel: '9', altLabel: 'O', row: 0, col: 2,
+    points: 5, color: '#7cf7ff', speed: 3000, depth: 0.78, arc: 'high', margin: 32,
+    duration: 0.5, strike: 0.42, delay: 0, zone: [60, 430],
+    fx: 'bolt', shake: 12, hitStop: 0.05, slowmo: 0.2, spin: 4, rebound: 2,
+  },
+  {
+    id: 'shockwave', tier: 'meme', name: '冲击波', en: 'Shockwave', desc: '命中瞬间把对手震退好几步',
+    numpad: 'Numpad4', alt: 'KeyJ', keyLabel: '4', altLabel: 'J', row: 1, col: 0,
+    points: 5, color: '#ff5df0', speed: 3600, depth: 0.62, arc: 'flat', margin: 24,
+    duration: 0.58, strike: 0.42, delay: 0, zone: [120, 430],
+    fx: 'fire', shake: 22, hitStop: 0.08, slowmo: 0.28, spin: 0, push: 900,
+  },
 ];
 
 export const SHOT_BY_ID = Object.fromEntries(SHOTS.map((s) => [s.id, s])) as Record<ShotId, ShotDef>;
@@ -125,7 +156,7 @@ export const SERVES = {
 
 /* ————————————————— 玩法模式（普通 / 专业） ————————————————— */
 
-export type PlayStyle = 'casual' | 'pro';
+export type PlayStyle = 'casual' | 'pro' | 'meme';
 
 export interface PlayStyleDef {
   id: PlayStyle;
@@ -154,6 +185,14 @@ export const PLAYSTYLES: PlayStyleDef[] = [
     desc: '九种击球全开，增加吊球、搓球、弹击、跳杀、劈吊',
     serveHint: '搓球 / 吊球 / 劈吊 / 弹击 = 短发球 · 其余 = 高远发球',
   },
+  {
+    id: 'meme',
+    label: '恶搞模式',
+    en: 'Chaos',
+    sub: '雷霆 · 反弹 · 冲击波',
+    desc: '不讲武德：雷霆蓄力杀球、超级反弹、冲击波，得分还翻倍',
+    serveHint: '随便抡 · 大力出奇迹',
+  },
 ];
 
 export const PLAYSTYLE_BY_ID = Object.fromEntries(PLAYSTYLES.map((p) => [p.id, p])) as Record<PlayStyle, PlayStyleDef>;
@@ -162,9 +201,39 @@ export const playStyleOf = (style: PlayStyle): PlayStyleDef => PLAYSTYLE_BY_ID[s
 /** 普通模式下开放的基础击球 */
 export const BASIC_SHOT_IDS: ShotId[] = ['clear', 'smash', 'drive', 'lift'];
 
-/** 该玩法模式可用的击球（顺序沿用 SHOTS，键位与专业模式一致，切模式不用重新记键位） */
-export const shotsFor = (style: PlayStyle): ShotDef[] =>
-  style === 'pro' ? SHOTS : SHOTS.filter((s) => s.tier === 'basic');
+/** 恶搞模式的九宫格组合（三招恶搞 + 六招经典） */
+export const MEME_ROSTER: ShotId[] = [
+  'thunderSmash', 'smash', 'superRebound',
+  'shockwave', 'drive', 'drop',
+  'clear', 'lift', 'net',
+];
+
+type KeyBinding = Pick<ShotDef, 'numpad' | 'alt' | 'keyLabel' | 'altLabel' | 'row' | 'col'>;
+
+/** 恶搞模式把这几招摆到新键位上（九宫格保持铺满） */
+const MEME_KEYS: Partial<Record<ShotId, KeyBinding>> = {
+  thunderSmash: { numpad: 'Numpad7', alt: 'KeyU', keyLabel: '7', altLabel: 'U', row: 0, col: 0 },
+  superRebound: { numpad: 'Numpad9', alt: 'KeyO', keyLabel: '9', altLabel: 'O', row: 0, col: 2 },
+  shockwave: { numpad: 'Numpad4', alt: 'KeyJ', keyLabel: '4', altLabel: 'J', row: 1, col: 0 },
+  drive: { numpad: 'Numpad5', alt: 'KeyK', keyLabel: '5', altLabel: 'K', row: 1, col: 1 },
+  drop: { numpad: 'Numpad6', alt: 'KeyL', keyLabel: '6', altLabel: 'L', row: 1, col: 2 },
+  clear: { numpad: 'Numpad1', alt: 'KeyM', keyLabel: '1', altLabel: 'M', row: 2, col: 0 },
+  lift: { numpad: 'Numpad2', alt: 'Comma', keyLabel: '2', altLabel: ',', row: 2, col: 1 },
+  net: { numpad: 'Numpad3', alt: 'Period', keyLabel: '3', altLabel: '.', row: 2, col: 2 },
+};
+
+/**
+ * 该玩法模式可用的击球。
+ * 普通 / 专业模式直接筛 SHOTS（键位不变，切模式不用重新记）；
+ * 恶搞模式返回一份重新排过键位的副本。
+ */
+export const shotsFor = (style: PlayStyle): ShotDef[] => {
+  if (style === 'meme') {
+    return MEME_ROSTER.map((id) => ({ ...SHOT_BY_ID[id], ...MEME_KEYS[id] }));
+  }
+  if (style === 'pro') return SHOTS.filter((s) => s.tier !== 'meme');
+  return SHOTS.filter((s) => s.tier === 'basic');
+};
 
 export const shotIdsFor = (style: PlayStyle): ShotId[] => shotsFor(style).map((s) => s.id);
 
