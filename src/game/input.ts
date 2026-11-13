@@ -98,6 +98,14 @@ export class Input {
   takeJump(map: Keymap): boolean {
     return this.pressed.some((c) => map.jump.includes(c));
   }
+  /** 通用：本帧是否按下了 keys 中的任意一个 */
+  take(keys: string[]): boolean {
+    return this.pressed.some((c) => keys.includes(c));
+  }
+  /** 某个击球键是否正被按住（长按蓄力用） */
+  held(keys: string[]): boolean {
+    return keys.some((c) => this.down.has(c));
+  }
   endFrame() {
     this.pressed.length = 0;
   }

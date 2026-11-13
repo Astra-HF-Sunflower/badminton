@@ -1,5 +1,6 @@
 import { NET_X, PLAYER, Side, approach, clamp, sideSign } from './constants';
 import { CourtDef } from './court';
+import { getGravityScale } from './physics';
 import { computePose, Pose, Vec } from './pose';
 import { SHOT_BY_ID, ShotDef, ShotId } from './shots';
 import type { SwingKey } from './swings';
@@ -8,6 +9,8 @@ export interface Intent {
   move: number; // -1..1
   jump: boolean; // 本帧按下
   shot: ShotId | null; // 本帧按下
+  /** 长按蓄力：held = 蓄力键是否按住 */
+  charge?: { shot: ShotId; held: boolean } | null;
 }
 
 export type ServeKind = 'high' | 'short';
@@ -15,6 +18,10 @@ export type ServeKind = 'high' | 'short';
 export interface Swing {
   shot: ShotDef;
   key: SwingKey;
+  /** 蓄力倍率：1 = 普通，满蓄力约 1.9 */
+  power: number;
+  /** 是否蓄满（满蓄力额外加分/特效） */
+  maxed: boolean;
   /** 负数表示起跳前摇 */
   t: number;
   dur: number;
@@ -42,6 +49,8 @@ export class Player {
 
   swing: Swing | null = null;
   buffered: { shot: ShotId; ttl: number } | null = null;
+  /** 长按蓄力状态 */
+  charge: { shot: ShotId; t: number; max: number } | null = null;
   trail: TrailPoint[] = [];
 
   runPhase = 0;
@@ -73,7 +82,12 @@ export class Player {
   }
 
   get busy() {
-    return this.swing !== null;
+    return this.swing !== null || this.charge !== null;
+  }
+
+  /** 蓄力进度 0~1 */
+  get chargeRatio() {
+    return this.charge ? clamp(this.charge.t / this.charge.max, 0, 1) : 0;
   }
 
   reset(x: number) {
@@ -83,10 +97,11 @@ export class Player {
     this.z = 0;
     this.swing = null;
     this.buffered = null;
+    this.charge = null;
     this.trail.length = 0;
   }
 
-  private startSwing(shotId: ShotId, serve: ServeKind | null) {
+  private startSwing(shotId: ShotId, serve: ServeKind | null, power = 1, maxed = false) {
     const shot = SHOT_BY_ID[shotId];
     const delay = shot.id === 'jumpSmash' && this.z <= 1 && !serve ? shot.delay : 0;
     if (delay > 0) {
@@ -97,6 +112,8 @@ export class Player {
     this.swing = {
       shot,
       key,
+      power,
+      maxed,
       t: -delay,
       dur: serve ? 0.44 : shot.duration,
       strike: serve ? 0.4 : shot.strike,
@@ -119,8 +136,8 @@ export class Player {
     this.events = { jumped: false, landed: 0, step: false, swing: null };
     if (this.glow > 0) this.glow = Math.max(0, this.glow - dt * 4);
 
-    // —— 水平移动：挥拍时降速，空中惯性更大 ——
-    const committed = this.swing ? (this.swing.shot.id === 'jumpSmash' ? 0.45 : 0.62) : 1;
+    // —— 水平移动：挥拍时降速，蓄力时几乎定身 ——
+    const committed = this.charge ? 0.12 : this.swing ? (this.swing.shot.id === 'jumpSmash' ? 0.45 : 0.62) : 1;
     const target = intent.move * PLAYER.speed * this.speedMul * committed;
     this.vx = approach(this.vx, target, (this.z > 0 ? PLAYER.airAccel : PLAYER.groundAccel) * dt);
     this.x = clamp(this.x + this.vx * dt, this.minX, this.maxX);
@@ -132,7 +149,7 @@ export class Player {
       this.events.jumped = true;
     }
     if (this.z > 0 || this.vz > 0) {
-      this.vz -= PLAYER.gravity * dt;
+      this.vz -= PLAYER.gravity * getGravityScale() * dt;
       this.z += this.vz * dt;
       if (this.z <= 0) {
         this.events.landed = -this.vz;
@@ -150,8 +167,28 @@ export class Player {
       if (Math.abs(this.vx) > 200 && prev * Math.sin(this.runPhase) < 0 && Math.cos(this.runPhase) > 0) this.events.step = true;
     }
 
+    // —— 长按蓄力 ——
+    const ch = intent.charge;
+    if (ch) {
+      if (ch.held) {
+        if (!this.charge && !this.swing && canSwing(ch.shot) !== false) {
+          this.charge = { shot: ch.shot, t: 0, max: SHOT_BY_ID[ch.shot].charge ?? 0.8 };
+        } else if (this.charge) {
+          this.charge.t = Math.min(this.charge.max, this.charge.t + dt);
+        }
+      } else if (this.charge) {
+        const ratio = clamp(this.charge.t / this.charge.max, 0, 1);
+        const id = this.charge.shot;
+        this.charge = null;
+        const serve = canSwing(id);
+        if (ratio > 0.08 && serve !== false) this.startSwing(id, serve, 1 + ratio * 0.95, ratio >= 0.98);
+      }
+    } else if (this.charge) {
+      this.charge = null;
+    }
+
     // —— 击球输入 ——
-    if (intent.shot) {
+    if (intent.shot && !this.charge) {
       const serve = canSwing(intent.shot);
       if (serve !== false) this.trySwing(intent.shot, serve);
     }

@@ -8,11 +8,18 @@ export interface Body {
   vy: number;
 }
 
+/** 全局重力系数：新月技能会把整场压成低重力（单人游戏，同一时刻只有一个实例） */
+let gravityScale = 1;
+export const setGravityScale = (v: number) => {
+  gravityScale = v;
+};
+export const getGravityScale = () => gravityScale;
+
 /** 半隐式欧拉 + 二次阻力 */
 export function stepBody(b: Body, dt: number) {
   const sp = Math.hypot(b.vx, b.vy);
   b.vx += -DRAG * sp * b.vx * dt;
-  b.vy += (GRAVITY - DRAG * sp * b.vy) * dt;
+  b.vy += (GRAVITY * gravityScale - DRAG * sp * b.vy) * dt;
   b.x += b.vx * dt;
   b.y += b.vy * dt;
 }

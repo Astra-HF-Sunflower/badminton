@@ -200,6 +200,28 @@ class AudioEngine {
     this.tone(520, 0.1, { to: 300, vol: 0.28 });
   }
 
+  /** 技能发动 */
+  skill() {
+    this.tone(520, 0.5, { to: 1560, vol: 0.18, type: 'triangle' });
+    this.tone(260, 0.6, { to: 780, vol: 0.12, type: 'sine' });
+    this.noise(0.5, { type: 'highpass', freq: 1200, to: 5200, q: 0.7, vol: 0.16 });
+    this.tone(2080, 0.4, { vol: 0.05, delay: 0.1, type: 'triangle' });
+  }
+
+  /** 蓄力满 */
+  chargeMax() {
+    this.tone(1320, 0.18, { to: 1980, vol: 0.14, type: 'square' });
+    this.tone(1980, 0.26, { to: 2640, vol: 0.1, type: 'triangle', delay: 0.06 });
+    this.noise(0.2, { freq: 4200, q: 2, vol: 0.14 });
+  }
+
+  /** 接球成功 */
+  catchBall() {
+    this.tone(880, 0.1, { to: 1320, vol: 0.2, type: 'triangle' });
+    this.tone(1320, 0.18, { to: 1760, vol: 0.12, delay: 0.05 });
+    this.noise(0.06, { freq: 2400, q: 1.4, vol: 0.2 });
+  }
+
   /** 超级反弹：弹起的清脆回升音 */
   bounce() {
     this.tone(300, 0.18, { to: 980, vol: 0.26, type: 'triangle' });

@@ -28,6 +28,8 @@ interface Plan {
   y: number;
   t: number;
   stamp: number;
+  /** 蓄力球：提前多久开始按住（秒） */
+  charge?: number;
 }
 
 /** 普通模式没有的球被选中时，换成同一用途的基础击球 */
@@ -58,6 +60,8 @@ export class AIController {
   private cfg: Cfg;
   private readonly allowed: Set<ShotId>;
   private readonly meme: boolean;
+  /** 引擎传入的冷却表（秒） */
+  private cool: Map<ShotId, number> | null = null;
   private plan: Plan | null = null;
   private replan = 0;
   private clock = 0;
@@ -87,7 +91,16 @@ export class AIController {
     this.serveWait = rand(0.9, 1.4);
   }
 
-  decide(dt: number, me: Player, opp: Player, shuttle: Shuttle, phase: Phase, homeX: number): Intent {
+  decide(
+    dt: number,
+    me: Player,
+    opp: Player,
+    shuttle: Shuttle,
+    phase: Phase,
+    homeX: number,
+    cool?: Map<ShotId, number>,
+  ): Intent {
+    this.cool = cool ?? null;
     this.clock += dt;
     const intent: Intent = { move: 0, jump: false, shot: null };
     const f = me.facing;
@@ -108,7 +121,12 @@ export class AIController {
       return intent;
     }
 
-    const incoming = phase === 'rally' && shuttle.lastHitter === opp.side && shuttle.held === null;
+    // 来球判定：对方击出的球，或者被「超级反弹」弹回、正飞向自己半场的球
+    const onMySide = (shuttle.x - NET_X) * me.facing < 0;
+    const incoming =
+      phase === 'rally' &&
+      shuttle.held === null &&
+      (shuttle.lastHitter === opp.side || (onMySide && Math.abs(shuttle.vx) > 30));
     if (!incoming) {
       this.plan = null;
       this.replan = 0;
@@ -130,13 +148,39 @@ export class AIController {
       const left = plan.t - (this.clock - plan.stamp);
       const shot = SHOT_BY_ID[plan.shot];
       const strikeTotal = shot.delay + shot.duration * shot.strike;
-      if (!me.swing && left <= strikeTotal && left > -0.12 && Math.abs(me.x - (plan.x - f * 56)) < 70) {
-        intent.shot = plan.shot;
-        this.plan = null;
-        this.replan = 0.25;
+      const aligned = Math.abs(me.x - (plan.x - f * 56)) < 80;
+
+      // 已经蓄力中：按到出手点松手
+      if (me.charge) {
+        if (left <= strikeTotal || !aligned) {
+          intent.charge = { shot: me.charge.shot, held: false };
+          this.plan = null;
+          this.replan = 0.3;
+        } else {
+          intent.charge = { shot: me.charge.shot, held: true };
+        }
+        return intent;
+      }
+
+      // 需要蓄力的球：提前按住
+      const chargeNeed = shot.charge ? plan.charge ?? 0.6 : 0;
+      if (!me.swing && left <= strikeTotal + chargeNeed && left > -0.12 && aligned) {
+        if (shot.charge) {
+          intent.charge = { shot: plan.shot, held: left > strikeTotal };
+        } else {
+          intent.shot = plan.shot;
+          this.plan = null;
+          this.replan = 0.25;
+        }
       }
     }
     return intent;
+  }
+
+  /** 冷却中的招式不选 */
+  private choose(list: [ShotId, number][]): ShotId {
+    const usable = list.filter(([id]) => (this.cool?.get(id) ?? 0) <= 0);
+    return pick(usable.length ? usable : [['clear', 1]]);
   }
 
   private makePlan(me: Player, s: Shuttle): Plan | null {
@@ -144,13 +188,28 @@ export class AIController {
     const err = this.cfg.err;
     const make = (id: ShotId, relY: number): Plan | null => {
       const shot = this.resolve(id);
+      if ((this.cool?.get(shot) ?? 0) > 0) return null; // 还在冷却
       const r = predict(s, { atY: GROUND - relY, maxT: 3.5 });
       if ((r.x - NET_X) * f > -20) return null; // 球不会落到自己半场
-      return { shot, x: clamp(r.x + rand(-err, err), me.minX, me.maxX), y: r.y, t: r.t, stamp: this.clock };
+      return {
+        shot,
+        x: clamp(r.x + rand(-err, err), me.minX, me.maxX),
+        y: r.y,
+        t: r.t,
+        stamp: this.clock,
+        charge: SHOT_BY_ID[shot].charge ? rand(0.45, 1.05) : undefined,
+      };
     };
-    // 恶搞模式：电脑也爱放暴走三招
-    if (this.meme && Math.random() < 0.5) {
-      const wild = make(pick([['thunderSmash', 3], ['shockwave', 3], ['superRebound', 2]]), 270);
+    const relEarly = GROUND - s.y;
+    // 恶搞模式：按来球高度挑暴走三招（高度不够就不硬上，避免空挥）
+    if (this.meme && Math.random() < 0.6) {
+      const list: [ShotId, number][] = [];
+      if (relEarly > 300) list.push(['thunderSmash', 3]);
+      if (relEarly > 150) list.push(['shockwave', 3]);
+      list.push(['superRebound', 2], ['smash', 1.5]);
+      const id = this.choose(list);
+      const relY = id === 'thunderSmash' ? 360 : id === 'shockwave' ? 265 : 220;
+      const wild = make(id, relY);
       if (wild) return wild;
     }
     const speed = Math.hypot(s.vx, s.vy);
@@ -162,23 +221,23 @@ export class AIController {
 
     // 对方杀过来的快球：只能防守
     if (speed > 1500 && s.vy > 0) {
-      return make(pick([['lift', 7], ['drive', 2], ['net', 1], ['flick', 1]]), 100);
+      return make(this.choose([['lift', 7], ['drive', 2], ['net', 1], ['flick', 1]]), 100);
     }
     // 极高的球：跳杀
     if (high && Math.random() < this.cfg.jump) return make('jumpSmash', 340);
     // 球会落到肩膀以下：挑 / 搓
     if (rel < 190 && s.vy > 0) {
       const at = clamp(rel - 8, 15, 60);
-      if (nearNet) return make(pick([['net', 5], ['lift', 4], ['drop', 1]]), at);
-      return make(pick([['lift', 7], ['net', 1], ['drive', 2]]), at);
+      if (nearNet) return make(this.choose([['net', 5], ['lift', 4], ['drop', 1]]), at);
+      return make(this.choose([['lift', 7], ['net', 1], ['drive', 2]]), at);
     }
     const a = this.cfg.attack;
     if (homeDeep) {
-      return make(pick([['clear', 4], ['smash', 3 * a + 1], ['drop', 3], ['cut', 2], ['flick', 1]]), 175);
+      return make(this.choose([['clear', 4], ['smash', 3 * a + 1], ['drop', 3], ['cut', 2], ['flick', 1]]), 175);
     }
     if (nearNet) {
-      return make(pick([['drop', 4], ['cut', 3], ['smash', 2 * a + 0.5], ['flick', 1]]), 175);
+      return make(this.choose([['drop', 4], ['cut', 3], ['smash', 2 * a + 0.5], ['flick', 1]]), 175);
     }
-    return make(pick([['smash', 4 * a + 1], ['drop', 3], ['clear', 2], ['cut', 2], ['drive', 1.5], ['flick', 1]]), 175);
+    return make(this.choose([['smash', 4 * a + 1], ['drop', 3], ['clear', 2], ['cut', 2], ['drive', 1.5], ['flick', 1]]), 175);
   }
 }

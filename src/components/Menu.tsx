@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Difficulty } from '../game/ai';
+import { CHARACTERS, CharacterId, characterOf } from '../game/characters';
 import { bgm, BGM_TRACKS } from '../game/bgm';
 import { COURTS, CourtSize } from '../game/court';
 import type { GameOptions, Mode } from '../game/engine';
@@ -47,6 +48,48 @@ function Seg<T extends string | number>({
   );
 }
 
+/** 角色选择：一个角色 = 一个技能 */
+function CharacterPicker({
+  label, value, onChange,
+}: {
+  label: string;
+  value: CharacterId;
+  onChange: (id: CharacterId) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+        <span className="text-[11px] text-slate-500">{characterOf(value).desc}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {CHARACTERS.map((c) => {
+          const active = c.id === value;
+          return (
+            <button
+              key={c.id}
+              onClick={() => {
+                sfx.init();
+                sfx.click();
+                onChange(c.id);
+              }}
+              className={`rounded-xl border px-2 py-2 text-left transition-all duration-200 ${
+                active ? 'bg-white/[0.12]' : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.08]'
+              }`}
+              style={active ? { borderColor: c.color, boxShadow: `0 0 22px -8px ${c.color}` } : undefined}
+            >
+              <div className="text-[13px] font-extrabold" style={{ color: active ? c.color : '#e2e8f0' }}>
+                {c.name}
+              </div>
+              <div className="mt-0.5 truncate text-[10.5px] text-slate-400">{c.skill}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const Label = ({ children }: { children: string }) => (
   <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{children}</div>
 );
@@ -55,6 +98,8 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
   const [mode, setMode] = useState<Mode>('single');
   const [style, setStyle] = useState<PlayStyle>('casual');
   const [court, setCourt] = useState<CourtSize>('medium');
+  const [charP1, setCharP1] = useState<CharacterId>('none');
+  const [charP2, setCharP2] = useState<CharacterId>('none');
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [target, setTarget] = useState(21);
   const [musicId, setMusicId] = useState<string | null>(bgm.currentId);
@@ -68,7 +113,14 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
   const start = () => {
     sfx.init();
     sfx.click();
-    onStart({ mode, style, court, difficulty, target });
+    onStart({
+      mode,
+      style,
+      court,
+      characters: mode === 'single' ? [charP1, 'none'] : [charP1, charP2],
+      difficulty,
+      target,
+    });
   };
 
   const pickMusic = (id: string | null) => {
@@ -103,7 +155,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <ShuttleLogo />
             <span className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-300/80">Stickman Badminton</span>
             <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
-              v0.1.0
+              v0.2.0
             </span>
           </div>
           <h1 className="bg-gradient-to-br from-white via-sky-100 to-cyan-300 bg-clip-text text-5xl font-black leading-tight text-transparent sm:text-6xl">
@@ -144,6 +196,13 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
               />
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{PLAYSTYLES.find((p) => p.id === style)?.desc}</p>
             </div>
+
+            <CharacterPicker
+              label={mode === 'single' ? '你的角色 · 技能' : 'P1 角色 · 技能'}
+              value={charP1}
+              onChange={setCharP1}
+            />
+            {mode === 'double' && <CharacterPicker label="P2 角色 · 技能" value={charP2} onChange={setCharP2} />}
 
             <div>
               <div className="mb-2 flex items-center justify-between">
@@ -228,8 +287,11 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
                   <Hint k="P2：← → · ↑ 或 0" v="移动 · 跳跃" />
                 </>
               )}
+              <Hint k={mode === 'single' ? 'Q' : 'Q / 右 Shift'} v="角色技能" />
+              {mode === 'single' ? <Hint k="C" v="接球（恶搞模式）" /> : <Hint k="C / 小键盘 Enter" v="接球（恶搞模式）" />}
               <Hint k="Esc / P" v="暂停" />
               <Hint k="击球时按住 ← →" v="调整落点深浅" />
+              <Hint k="长按 7（雷霆杀球）" v="蓄力，蓄满威力爆表" />
             </div>
           </div>
 

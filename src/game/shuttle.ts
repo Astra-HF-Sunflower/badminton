@@ -16,11 +16,11 @@ export interface Shuttle extends Body {
   trail: { x: number; y: number; age: number }[];
   trailAcc: number;
   bounced: boolean;
-  /** 恶搞模式「超级反弹」剩余弹跳次数 */
-  rebounds: number;
+  /** 恶搞模式「超级反弹」剩余乱弹次数 */
+  chaos: number;
 }
 
 export const createShuttle = (): Shuttle => ({
   x: 0, y: 0, vx: 0, vy: 0, angle: 0, spin: 0, held: null, lastHitter: null, lastShot: null,
-  perfect: false, poor: false, trail: [], trailAcc: 0, bounced: false, rebounds: 0,
+  perfect: false, poor: false, trail: [], trailAcc: 0, bounced: false, chaos: 0,
 });

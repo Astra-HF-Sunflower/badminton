@@ -59,7 +59,14 @@ export function computePose(p: Player, dt: number): Pose {
 
   let arm: ArmPose;
   let u = -1;
-  if (sw && sw.t >= 0) {
+  if (p.charge) {
+    // 蓄力：把雷霆杀球的引拍动作随蓄力逐渐拉满，尾巴还会抖
+    const r = p.chargeRatio;
+    arm = sampleSwing('thunderSmash', 0.06 + r * 0.46);
+    const shake = r >= 0.98 ? 0.05 : r * 0.02;
+    arm.sh += Math.sin(p.time * 46) * shake;
+    arm.wr += Math.sin(p.time * 39 + 1) * shake;
+  } else if (sw && sw.t >= 0) {
     u = sw.t / sw.dur;
     arm = sampleSwing(sw.key, u);
   } else {

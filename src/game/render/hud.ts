@@ -1,4 +1,6 @@
+
 import { GROUND, Side, W, clamp } from '../constants';
+import { characterOf, skillKeyLabel } from '../characters';
 import { SHOT_BY_ID, playStyleOf } from '../shots';
 import type { Scene } from './scene';
 
@@ -125,6 +127,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
     const x = x0 + 8 + shot.col * (cw + 3);
     const y = y0 + 30 + shot.row * (ch + 3);
     const used = Math.max(0, 1 - (s.time - (s.used.get(`${side}:${shot.id}`) ?? -9)) * 3.2);
+    const cd = s.cooldown[side]?.get(shot.id) ?? 0;
     ctx.beginPath();
     ctx.roundRect(x, y, cw, ch, 10);
     ctx.fillStyle = `rgba(255,255,255,${0.07 + used * 0.2})`;
@@ -143,8 +146,76 @@ function drawLegend(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
     ctx.fill();
     text(ctx, useAlt ? shot.altLabel : shot.keyLabel, x + 19, y + 21, 17, '#101828', 'center', 900);
     text(ctx, shot.name, x + 38, y + 14, 14, '#f1f5ff', 'left', 800);
-    text(ctx, `+${shot.points} 分`, x + 38, y + 29, 11, shot.color, 'left', 700);
+    if (cd > 0) {
+      ctx.globalAlpha = Math.min(1, cd);
+      text(ctx, `${cd.toFixed(1)}s`, x + 38, y + 29, 11, '#9aa8c4', 'left', 700);
+      ctx.globalAlpha = 1;
+    } else {
+      text(ctx, `+${shot.points} 分`, x + 38, y + 29, 11, shot.color, 'left', 700);
+    }
   }
+}
+
+/** 头顶的蓄力环 */
+function drawCharge(ctx: CanvasRenderingContext2D, s: Scene, side: Side) {
+  const p = s.players[side];
+  if (!p.charge) return;
+  const r = p.chargeRatio;
+  const x = p.x;
+  const y = p.pose.head.y - 52;
+  const rad = 24;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = r >= 0.98 ? '#fff3b0' : '#ffd93d';
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 14 + r * 22;
+  ctx.beginPath();
+  ctx.arc(x, y, rad, -Math.PI / 2, -Math.PI / 2 + r * Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  if (r >= 0.98) text(ctx, 'MAX', x, y, 13, '#fff8d8', 'center', 900);
+  else text(ctx, `${Math.round(r * 100)}%`, x, y, 12, '#ffe9a3', 'center', 900);
+}
+
+/** 双方技能状态条 */
+function drawSkills(ctx: CanvasRenderingContext2D, s: Scene) {
+  ([0, 1] as Side[]).forEach((side) => {
+    const c = characterOf(s.characters[side]);
+    const st = s.skills[side];
+    const w = 300;
+    const h = 42;
+    const x = W / 2 + (side === 0 ? -w / 2 - 8 : w / 2 + 8);
+    const y = GROUND + 24;
+    panel(ctx, x - w / 2, y, w, h, 13, 0.55);
+    ctx.fillStyle = c.color;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2 + 9, y + 9, 4, h - 18, 2);
+    ctx.fill();
+    text(ctx, c.name, x - w / 2 + 20, y + 14, 13.5, c.color, 'left', 900);
+    text(ctx, c.id === 'none' ? '无特殊能力' : c.skill, x - w / 2 + 20, y + 30, 11.5, 'rgba(226,238,255,0.78)', 'left', 700);
+
+    let state: string;
+    let col: string;
+    if (c.id === 'none') {
+      state = '—';
+      col = 'rgba(190,202,224,0.45)';
+    } else if (st.active > 0) {
+      state = `${st.active.toFixed(1)}s${c.id === 'heaven' ? ` ×${st.level}` : ''}`;
+      col = c.color;
+    } else if (st.cooldown > 0) {
+      state = `冷却 ${Math.ceil(st.cooldown)}s`;
+      col = 'rgba(170,186,210,0.7)';
+    } else {
+      state = `就绪 · ${skillKeyLabel(side)}`;
+      col = '#9be564';
+    }
+    text(ctx, state, x + w / 2 - 12, y + h / 2, 13, col, 'right', 900);
+  });
 }
 
 function drawTips(ctx: CanvasRenderingContext2D, s: Scene) {
@@ -153,12 +224,20 @@ function drawTips(ctx: CanvasRenderingContext2D, s: Scene) {
   const y0 = GROUND + 20;
   panel(ctx, x0, y0, w, 170, 18, 0.55);
   text(ctx, `电脑对手 · ${s.difficultyLabel}`, x0 + w / 2, y0 + 16, 13, s.players[1].color, 'center', 800);
-  const tips = [
-    ['击球时按住 ← / →', '向前打得更深，向后更短'],
-    ['球在最佳距离出手', '“完美击球”额外 +1 分'],
-    ['空中按 杀球 / 跳杀', '腾空爆扣威力更大'],
-    ['球落点出界或触网', '对手得 1 分'],
-  ];
+  const tips =
+    s.style === 'meme'
+      ? [
+          ['长按 7 蓄力杀球', '蓄满 MAX 后速度爆表 +3 分'],
+          ['C 接球', '球速够慢又贴身时能直接接住'],
+          ['9 超级反弹', '高速乱弹不落地，冷却 10 秒'],
+          ['Q / 右 Shift 技能', '角色专属技能（见下方状态条）'],
+        ]
+      : [
+          ['击球时按住 ← / →', '向前打得更深，向后更短'],
+          ['球在最佳距离出手', '“完美击球”额外 +1 分'],
+          ['空中按 杀球 / 跳杀', '腾空爆扣威力更大'],
+          ['球落点出界或触网', '对手得 1 分'],
+        ];
   tips.forEach(([a, b], i) => {
     const y = y0 + 44 + i * 31;
     ctx.fillStyle = s.players[0].color;
@@ -238,6 +317,9 @@ export function drawHud(ctx: CanvasRenderingContext2D, s: Scene) {
   drawScoreboard(ctx, s);
   drawUsage(ctx, s, 0);
   drawUsage(ctx, s, 1);
+  drawCharge(ctx, s, 0);
+  drawCharge(ctx, s, 1);
+  drawSkills(ctx, s);
   drawLegend(ctx, s, 0);
   if (s.mode === 'double') drawLegend(ctx, s, 1);
   else drawTips(ctx, s);
