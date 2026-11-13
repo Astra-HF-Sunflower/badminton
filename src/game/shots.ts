@@ -138,12 +138,12 @@ export const SHOTS: ShotDef[] = [
     fx: 'thunder', shake: 30, hitStop: 0.13, slowmo: 0.45, spin: 0,
   },
   {
-    id: 'superRebound', tier: 'meme', name: '超级反弹', en: 'Super Rebound', desc: '超高速轰出场外，球在场上乱弹一通才停下（冷却 10 秒）',
+    id: 'superRebound', tier: 'meme', name: '超级反弹', en: 'Super Rebound', desc: '3 秒内彻底无视物理：越弹越快、四面八方乱窜，三秒后才慢慢减速（冷却 10 秒）',
     numpad: 'Numpad9', alt: 'KeyO', keyLabel: '9', altLabel: 'O', row: 0, col: 2,
     points: 5, color: '#7cf7ff', speed: 8200, depth: 0.72, arc: 'flat', margin: 26,
     duration: 0.5, strike: 0.42, delay: 0, zone: [60, 430],
     blast: true,
-    fx: 'bolt', shake: 26, hitStop: 0.06, slowmo: 0.25, spin: 6, chaos: 13, cooldown: 10,
+    fx: 'bolt', shake: 26, hitStop: 0.06, slowmo: 0.25, spin: 6, chaos: 3, cooldown: 10,
   },
   {
     id: 'shockwave', tier: 'meme', name: '冲击波', en: 'Shockwave', desc: '命中瞬间把对手震退好几步',

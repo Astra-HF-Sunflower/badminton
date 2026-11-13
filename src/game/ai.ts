@@ -197,7 +197,7 @@ export class AIController {
     const make = (id: ShotId, relY: number): Plan | null => {
       const shot = this.resolve(id);
       if ((this.cool?.get(shot) ?? 0) > 0) return null; // 还在冷却
-      const r = predict(s, { atY: GROUND - relY, maxT: 3.5 });
+      const r = predict(s, { atY: GROUND - relY, maxT: 3.5, wrap: this.meme });
       if ((r.x - NET_X) * f > -20) return null; // 球不会落到自己半场
       return {
         shot,

@@ -47,6 +47,8 @@ export function TouchControls({ onKey, shots }: Props) {
         <Btn code="ArrowLeft" onKey={onKey} className="h-16 w-16 bg-white/15 text-2xl text-white">◀</Btn>
         <Btn code="ArrowRight" onKey={onKey} className="h-16 w-16 bg-white/15 text-2xl text-white">▶</Btn>
         <Btn code="ArrowUp" onKey={onKey} className="mb-12 ml-2 h-16 w-16 bg-white/15 text-sm text-white">跳</Btn>
+        <Btn code="KeyC" onKey={onKey} className="mb-12 ml-2 h-16 w-16 bg-cyan-400/85 text-sm text-slate-900">接</Btn>
+        <Btn code="KeyQ" onKey={onKey} className="mb-28 ml-2 h-12 w-12 bg-fuchsia-400/85 text-xs text-slate-900">技</Btn>
       </div>
       <div className="pointer-events-auto grid grid-cols-3 gap-1.5">
         {shots.map((s) => (

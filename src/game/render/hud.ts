@@ -205,7 +205,12 @@ function drawSkills(ctx: CanvasRenderingContext2D, s: Scene) {
       state = '—';
       col = 'rgba(190,202,224,0.45)';
     } else if (st.active > 0) {
-      state = `${st.active.toFixed(1)}s${c.id === 'heaven' ? ` ×${st.level}` : ''}`;
+      state =
+        c.id === 'heaven'
+          ? `${st.active.toFixed(1)}s ×${st.level}`
+          : c.id === 'crescent'
+            ? `${st.active.toFixed(1)}s 重力×${st.level}`
+            : `${st.active.toFixed(1)}s`;
       col = c.color;
     } else if (st.cooldown > 0) {
       state = `冷却 ${Math.ceil(st.cooldown)}s`;
@@ -227,16 +232,17 @@ function drawTips(ctx: CanvasRenderingContext2D, s: Scene) {
   const tips =
     s.style === 'meme'
       ? [
-          ['按住 7 蓄力杀球', '松手就出，蓄越久越离谱（满蓄 +3 分）'],
-          ['C 接球', '球速够慢又贴身时能直接接住'],
-          ['9 超级反弹', '15000 速度乱弹十几下，冷却 10 秒'],
-          ['Q / 右 Shift 技能', '角色专属技能（见下方状态条）'],
+          ['按住 7 蓄力杀球', '松手就出，边跑边蓄，满蓄 +3 分'],
+          ['没有界线', '两边空气墙打通：飞出去就从另一边飞回来'],
+          ['球落地就算', '落在谁半场谁丢分，没有出界'],
+          ['9 超级反弹', '3 秒内越弹越快，三秒后才减速'],
+          ['C 接球 · Q 技能', '球要正好碰到手；技能见下方状态条'],
         ]
       : [
           ['击球时按住 ← / →', '向前打得更深，向后更短'],
           ['球在最佳距离出手', '“完美击球”额外 +1 分'],
           ['空中按 杀球 / 跳杀', '腾空爆扣威力更大'],
-          ['球落点出界或触网', '对手得 1 分'],
+          ['C 接球', '球正好碰到手、且球速不快时能直接接住'],
         ];
   tips.forEach(([a, b], i) => {
     const y = y0 + 44 + i * 31;

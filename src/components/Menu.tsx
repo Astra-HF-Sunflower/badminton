@@ -155,7 +155,7 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
             <ShuttleLogo />
             <span className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-300/80">Stickman Badminton</span>
             <span className="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
-              v0.3.0
+              v0.4.0
             </span>
           </div>
           <h1 className="bg-gradient-to-br from-white via-sky-100 to-cyan-300 bg-clip-text text-5xl font-black leading-tight text-transparent sm:text-6xl">
@@ -298,10 +298,11 @@ export function Menu({ onStart, muted, onToggleMute }: Props) {
               {style === 'meme' && (
                 <>
                   <Hint k={mode === 'single' ? 'Q' : 'Q / 右 Shift'} v="角色技能" />
-                  {mode === 'single' ? <Hint k="C" v="接球" /> : <Hint k="C / 小键盘 Enter" v="接球" />}
                   <Hint k="按住 7（雷霆杀球）" v="蓄力，松手就出手" />
+                  <Hint k="按住 7 的同时 ← →" v="边跑边蓄力" />
                 </>
               )}
+              {mode === 'single' ? <Hint k="C" v="接球" /> : <Hint k="C / 小键盘 Enter" v="接球" />}
               <Hint k="Esc / P" v="暂停" />
               <Hint k="击球时按住 ← →" v="调整落点深浅" />
             </div>

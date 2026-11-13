@@ -143,8 +143,8 @@ export class Player {
     this.events = { jumped: false, landed: 0, step: false, swing: null };
     if (this.glow > 0) this.glow = Math.max(0, this.glow - dt * 4);
 
-    // —— 水平移动：挥拍时降速，蓄力时几乎定身 ——
-    const committed = this.charge ? 0.12 : this.swing ? (this.swing.shot.id === 'jumpSmash' ? 0.45 : 0.62) : 1;
+    // —— 水平移动：挥拍时降速；蓄力照样能跑（边跑边蓄） ——
+    const committed = this.charge ? 0.9 : this.swing ? (this.swing.shot.id === 'jumpSmash' ? 0.45 : 0.62) : 1;
     const target = intent.move * PLAYER.speed * this.speedMul * committed;
     this.vx = approach(this.vx, target, (this.z > 0 ? PLAYER.airAccel : PLAYER.groundAccel) * dt);
     this.x = clamp(this.x + this.vx * dt, this.minX, this.maxX);
@@ -158,14 +158,17 @@ export class Player {
       this.events.jumped = true;
     }
     if (lowG) {
-      // 失重：人和球一起漂，围绕一个悬浮高度轻轻起伏
-      const hover = 34 + Math.sin(this.time * 1.5 + this.side * 2.1) * 14;
-      this.vz += ((hover - this.z) * 5.2 - this.vz * 3.0) * dt;
+      // 失重：全场失重，人会飘到半空乱晃（重力越接近 0 越疯）
+      const amt = clamp(1 - gScale, 0, 1);
+      const hover = 60 + amt * 100 + Math.sin(this.time * (1.1 + amt * 0.9) + this.side * 2.1) * (16 + amt * 62);
+      this.vz += ((hover - this.z) * (4.2 + amt * 1.8) - this.vz * (2.6 + amt * 1.4)) * dt;
       this.z += this.vz * dt;
       if (this.z < 0) {
         this.z = 0;
         this.vz = Math.max(this.vz, 0);
       }
+      // 横向也会自己飘：想稳住就得自己反向拉回来
+      this.vx += Math.sin(this.time * 0.7 + this.side * 3.3) * amt * 300 * dt;
     } else if (this.z > 0 || this.vz > 0) {
       this.vz -= PLAYER.gravity * gScale * dt;
       this.z += this.vz * dt;

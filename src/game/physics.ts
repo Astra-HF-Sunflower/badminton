@@ -1,4 +1,4 @@
-import { DRAG, GRAVITY, GROUND, NET_TOP, NET_X, SHUTTLE_R, STEP, Side, sideSign } from './constants';
+import { DRAG, GRAVITY, GROUND, NET_TOP, NET_X, SHUTTLE_R, STEP, Side, WRAP_L, WRAP_R, WRAP_SPAN, sideSign } from './constants';
 import { CourtDef, courtHalf } from './court';
 
 export interface Body {
@@ -8,6 +8,8 @@ export interface Body {
   vy: number;
   /** 阻力倍率：恶搞招式用它造出「速度离谱但落点照旧」的弹道 */
   dragMul?: number;
+  /** 超级反弹期间：完全无视空气阻力（越弹越快） */
+  star?: boolean;
 }
 
 /** 全局重力系数：新月技能会把整场压成低重力（单人游戏，同一时刻只有一个实例） */
@@ -20,9 +22,17 @@ export const getGravityScale = () => gravityScale;
 /** 半隐式欧拉 + 二次阻力 */
 export function stepBody(b: Body, dt: number) {
   const sp = Math.hypot(b.vx, b.vy);
-  const drag = DRAG * (b.dragMul ?? 1);
-  b.vx += -drag * sp * b.vx * dt;
-  b.vy += (GRAVITY * gravityScale - drag * sp * b.vy) * dt;
+  const g = GRAVITY * gravityScale;
+  if (b.star) {
+    // 超级反弹：没有空气，只吃重力，速度全凭弹跳往上叠
+    b.vy += g * dt;
+  } else {
+    const drag = DRAG * (b.dragMul ?? 1);
+    b.vx += -drag * sp * b.vx * dt;
+    b.vy += (g - drag * sp * b.vy) * dt;
+    // 重力趋近 0 时球会飘着不落地：速度掉光之后让它慢慢往下掉（「掉毛」）
+    if (gravityScale < 0.4 && sp < 260) b.vy += 320 * dt;
+  }
   b.x += b.vx * dt;
   b.y += b.vy * dt;
 }
@@ -125,13 +135,17 @@ export function solveShot(inp: SolveInput): { vx: number; vy: number } {
 /** 预测球落点与经过指定高度的位置（给 AI 用） */
 export function predict(
   from: Body,
-  opts: { atY?: number; maxT?: number } = {},
+  opts: { atY?: number; maxT?: number; wrap?: boolean } = {},
 ): { x: number; y: number; t: number; landed: boolean } {
   const b = { ...from };
   const maxT = opts.maxT ?? 4;
   let t = 0;
   while (t < maxT) {
     stepBody(b, STEP * 2);
+    if (opts.wrap) {
+      if (b.x < WRAP_L) b.x += WRAP_SPAN;
+      else if (b.x > WRAP_R) b.x -= WRAP_SPAN;
+    }
     t += STEP * 2;
     if (b.y >= GROUND - SHUTTLE_R) return { x: b.x, y: GROUND - SHUTTLE_R, t, landed: true };
     if (opts.atY !== undefined && b.vy > 0 && b.y >= opts.atY) return { x: b.x, y: b.y, t, landed: false };

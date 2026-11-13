@@ -14,6 +14,8 @@ export interface CharacterDef {
   duration: number;
   /** 技能冷却（秒，从发动开始算） */
   cooldown: number;
+  /** 可切换的重力档位（新月专用） */
+  gravities?: number[];
 }
 
 /** 每个玩家的技能状态 */
@@ -54,10 +56,11 @@ export const CHARACTERS: CharacterDef[] = [
     name: '新月',
     en: 'Crescent',
     color: '#67e8f9',
-    skill: '失重',
-    desc: '30 秒低重力：人和球都开始漂浮，球落地依旧判负',
+    skill: '重力操控',
+    desc: '30 秒为所欲为：人、球、球网全部飘起来；技能键循环切换重力 ×0 / ×1 / ×5 / ×8 / ×10',
     duration: 30,
     cooldown: 36,
+    gravities: [0, 1, 5, 8, 10],
   },
   {
     id: 'heaven',
@@ -81,6 +84,8 @@ export const CATCH_KEYS: [string[], string[]] = [['KeyC'], ['NumpadEnter']];
 
 /** 天堂制造可切换的加速倍率 */
 export const HEAVEN_LEVELS = [2, 4, 5];
+/** 新月：技能期间可以反复按技能键切换重力（0 = 完全失重） */
+export const CRESCENT_GRAVITIES = [0, 1, 5, 8, 10];
 
 /** 失重时的重力系数 */
 export const CRESCENT_GRAVITY = 0.34;

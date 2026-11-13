@@ -11,6 +11,10 @@ export const NET_TOP = GROUND - NET_H;
 export const GRAVITY = 1100;
 export const DRAG = 0.0022;
 export const SHUTTLE_R = 9;
+/** 恶搞模式：两侧空气墙打通，越过一边就从另一边回来 */
+export const WRAP_L = -40;
+export const WRAP_R = W + 40;
+export const WRAP_SPAN = WRAP_R - WRAP_L;
 export const STEP = 1 / 120; // 固定物理步长
 
 export const PLAYER = {

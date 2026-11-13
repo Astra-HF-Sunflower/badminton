@@ -16,8 +16,10 @@ export interface Shuttle extends Body {
   trail: { x: number; y: number; age: number }[];
   trailAcc: number;
   bounced: boolean;
-  /** 恶搞模式「超级反弹」剩余乱弹次数 */
+  /** 恶搞模式「超级反弹」剩余疯狂时间（秒） */
   chaos: number;
+  /** 上一步刚穿过空气墙，跳过过网判定 */
+  wrapped?: boolean;
 }
 
 export const createShuttle = (): Shuttle => ({
