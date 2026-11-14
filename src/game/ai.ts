@@ -1,6 +1,7 @@
-import { GROUND, NET_X, clamp, rand } from './constants';
+import { GROUND, NET_X, PLAYER, clamp, rand } from './constants';
+import { COURT_BY_ID, CourtDef } from './court';
 import type { Intent, Player } from './player';
-import { predict } from './physics';
+import { landingX, predict } from './physics';
 import { PlayStyle, SHOT_BY_ID, ShotId, shotIdsFor } from './shots';
 import type { Shuttle } from './shuttle';
 
@@ -13,13 +14,13 @@ interface Cfg {
   speed: number;
   react: number;
   err: number;
-  jump: number;
+  /** 进攻欲望：越高越敢打杀球 / 跳杀 */
   attack: number;
 }
 const CFG: Record<Difficulty, Cfg> = {
-  easy: { speed: 0.7, react: 0.3, err: 80, jump: 0.1, attack: 0.3 },
-  normal: { speed: 0.88, react: 0.16, err: 38, jump: 0.3, attack: 0.5 },
-  hard: { speed: 1.0, react: 0.08, err: 14, jump: 0.5, attack: 0.65 },
+  easy: { speed: 0.7, react: 0.3, err: 80, attack: 0.35 },
+  normal: { speed: 0.88, react: 0.16, err: 38, attack: 0.6 },
+  hard: { speed: 1.0, react: 0.08, err: 14, attack: 0.85 },
 };
 
 interface Plan {
@@ -48,6 +49,9 @@ const SUBSTITUTE: Record<ShotId, ShotId> = {
   shockwave: 'smash',
 };
 
+/** 对方杀球时只能用来防守的球 */
+const DEFENSIVE = new Set<ShotId>(['lift', 'drive', 'net', 'flick', 'clear']);
+
 const pick = (list: [ShotId, number][]): ShotId => {
   const total = list.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
@@ -64,6 +68,13 @@ export class AIController {
   private cool: Map<ShotId, number> | null = null;
   /** 蓄力球计划松手的时间点 */
   private releaseAt: number | null = null;
+  /** 这一拍是否已经在处理（用来锁定「一拍只选一次球路」） */
+  private wasIncoming = false;
+  /** 上一拍 / 上上拍用的球，用来避免连续重复 */
+  private lastShot: ShotId | null = null;
+  private prevShot: ShotId | null = null;
+  /** 最近几拍的球路，用来越打越换花样 */
+  private history: ShotId[] = [];
   private plan: Plan | null = null;
   private replan = 0;
   private clock = 0;
@@ -91,6 +102,10 @@ export class AIController {
     this.plan = null;
     this.releaseAt = null;
     this.replan = 0;
+    this.wasIncoming = false;
+    this.lastShot = null;
+    this.prevShot = null;
+    this.history.length = 0;
     this.serveWait = rand(0.9, 1.4);
   }
 
@@ -102,6 +117,7 @@ export class AIController {
     phase: Phase,
     homeX: number,
     cool?: Map<ShotId, number>,
+    court: CourtDef = COURT_BY_ID.medium,
   ): Intent {
     this.cool = cool ?? null;
     this.clock += dt;
@@ -126,6 +142,17 @@ export class AIController {
 
     // 来球判定：对方击出的球，或者被「超级反弹」弹回、正飞向自己半场的球
     const onMySide = (shuttle.x - NET_X) * me.facing < 0;
+    const incoming =
+      phase === 'rally' &&
+      shuttle.held === null &&
+      (shuttle.lastHitter === opp.side || (onMySide && Math.abs(shuttle.vx) > 30));
+    // 新的一拍：球路只在这一刻决定，后面只微调跑位（不然会一直重摇）
+    if (incoming && !this.wasIncoming) {
+      this.plan = null;
+      this.replan = 0;
+    }
+    this.wasIncoming = incoming;
+
     // —— 蓄力进行中：只管理松手时机，绝不半途丢掉 ——
     if (me.charge) {
       const rel = this.releaseAt;
@@ -141,16 +168,15 @@ export class AIController {
       return intent;
     }
 
-    const incoming =
-      phase === 'rally' &&
-      shuttle.held === null &&
-      (shuttle.lastHitter === opp.side || (onMySide && Math.abs(shuttle.vx) > 30));
     if (!incoming) {
       this.plan = null;
       this.replan = 0;
-      // 回到中场，对手打出高球时略微后撤
-      if (this.idleX === null) this.idleX = homeX;
-      this.idleX += (homeX + (shuttle.lastHitter === me.side ? f * 50 : 0) - this.idleX) * Math.min(1, dt * 3);
+      // 回到中场：对手在后场就往后站半步，对手压上来就往前顶
+      const oppNetDist = Math.abs(opp.x - NET_X);
+      const shift = oppNetDist > 430 ? -40 : oppNetDist < 250 ? 40 : 0;
+      const rest = homeX + shift * f + (shuttle.lastHitter === me.side ? f * 40 : 0);
+      if (this.idleX === null) this.idleX = rest;
+      this.idleX += (rest - this.idleX) * Math.min(1, dt * 3);
       goTo(this.idleX);
       return intent;
     }
@@ -158,7 +184,9 @@ export class AIController {
     this.replan -= dt;
     if (this.replan <= 0 || !this.plan) {
       this.replan = this.cfg.react;
-      this.plan = this.makePlan(me, shuttle);
+      const keep = this.plan?.shot;
+      // 先试着沿用已经选好的球路（跑位更连贯），实在打不到再重选
+      this.plan = (keep ? this.makePlan(me, shuttle, opp, court, keep) : null) ?? this.makePlan(me, shuttle, opp, court);
     }
     const plan = this.plan;
     if (plan) {
@@ -191,61 +219,139 @@ export class AIController {
     return pick(usable.length ? usable : [['clear', 1]]);
   }
 
-  private makePlan(me: Player, s: Shuttle): Plan | null {
-    const f = me.facing;
-    const err = this.cfg.err;
-    const make = (id: ShotId, relY: number): Plan | null => {
-      const shot = this.resolve(id);
-      if ((this.cool?.get(shot) ?? 0) > 0) return null; // 还在冷却
-      const r = predict(s, { atY: GROUND - relY, maxT: 3.5, wrap: this.meme });
-      if ((r.x - NET_X) * f > -20) return null; // 球不会落到自己半场
-      return {
-        shot,
-        x: clamp(r.x + rand(-err, err), me.minX, me.maxX),
-        y: r.y,
-        t: r.t,
-        stamp: this.clock,
-        charge: SHOT_BY_ID[shot].charge ? rand(0.4, SHOT_BY_ID[shot].charge ?? 0.9) : undefined,
-      };
-    };
-    const relEarly = GROUND - s.y;
-    // 恶搞模式：按来球高度挑暴走三招（高度不够就不硬上，避免空挥）
-    if (this.meme && Math.random() < 0.42) {
-      const list: [ShotId, number][] = [];
-      if (relEarly > 300) list.push(['thunderSmash', 2]);
-      if (relEarly > 150) list.push(['shockwave', 3]);
-      list.push(['superRebound', 2], ['smash', 1.5]);
-      const id = this.choose(list);
-      const relY = id === 'thunderSmash' ? 185 : id === 'shockwave' ? 240 : 220;
-      const wild = make(id, relY);
-      if (wild) return wild;
-    }
-    const speed = Math.hypot(s.vx, s.vy);
+  /**
+   * 选球：先按「能不能在最佳高度够到 / 跑不跑得到」筛掉打不成的，
+   * 再按场上形势打分 —— 打空档、别重复、别乱跳杀。
+   */
+  private makePlan(me: Player, s: Shuttle, opp: Player, court: CourtDef, force?: ShotId): Plan | null {
     const netDist = Math.abs(me.x - NET_X);
-    const homeDeep = netDist > 450;
-    const nearNet = netDist < 200;
-    const high = s.y < GROUND - 360;
+    const near = netDist < 210;
+    const deep = netDist > 430;
     const rel = GROUND - s.y;
+    const fastIncoming = Math.hypot(s.vx, s.vy) > 1500 && s.vy > 0;
 
-    // 对方杀过来的快球：只能防守
-    if (speed > 1500 && s.vy > 0) {
-      return make(this.choose([['lift', 7], ['drive', 2], ['net', 1], ['flick', 1]]), 100);
+    // 恶搞模式：一拍里偶尔来一发暴走三招（不再每帧重摇）
+    if (!force && this.meme && Math.random() < 0.3) {
+      const list: [ShotId, number][] = [];
+      if (rel > 300) list.push(['thunderSmash', 2]);
+      if (rel > 150) list.push(['shockwave', 3]);
+      list.push(['superRebound', 2], ['smash', 1.5]);
+      const wild = this.planFor(me, s, this.choose(list));
+      if (wild) {
+        this.prevShot = this.lastShot;
+        this.lastShot = wild.shot;
+        this.history.push(wild.shot);
+        if (this.history.length > 6) this.history.shift();
+        return wild;
+      }
     }
-    // 极高的球：跳杀
-    if (high && Math.random() < this.cfg.jump) return make('jumpSmash', 340);
-    // 球会落到肩膀以下：挑 / 搓
-    if (rel < 190 && s.vy > 0) {
-      const at = clamp(rel - 8, 15, 60);
-      if (nearNet) return make(this.choose([['net', 5], ['lift', 4], ['drop', 1]]), at);
-      return make(this.choose([['lift', 7], ['net', 1], ['drive', 2]]), at);
+
+    const ids = force ? [force] : [...this.allowed];
+    let best: { plan: Plan; score: number } | null = null;
+    for (const raw of ids) {
+      const id = this.resolve(raw);
+      // 对方杀过来的快球：先想着接住，别在下面组织进攻
+      if (fastIncoming && !DEFENSIVE.has(id)) continue;
+      // 跳杀要有高度、也别在网前硬跳
+      if (id === 'jumpSmash' && (rel < 300 || near)) continue;
+      const plan = this.planFor(me, s, id);
+      if (!plan) continue;
+      const score = this.rateShot(plan.shot, me, opp, court, { near, deep, rel, fastIncoming });
+      if (!best || score > best.score) best = { plan, score };
     }
-    const a = this.cfg.attack;
-    if (homeDeep) {
-      return make(this.choose([['clear', 4], ['smash', 3 * a + 1], ['drop', 3], ['cut', 2], ['flick', 1]]), 175);
+    if (best) {
+      if (!force) {
+        this.prevShot = this.lastShot;
+        this.lastShot = best.plan.shot;
+        this.history.push(best.plan.shot);
+        if (this.history.length > 6) this.history.shift();
+      }
+      return best.plan;
     }
-    if (nearNet) {
-      return make(this.choose([['drop', 4], ['cut', 3], ['smash', 2 * a + 0.5], ['flick', 1]]), 175);
+
+    // 兜底：球已经很低了，就近挑起来救
+    const at = clamp(rel - 12, 12, 80);
+    for (const id of ['lift', 'drive', 'net', 'clear', 'smash'] as ShotId[]) {
+      const p = this.planFor(me, s, id, at);
+      if (p) return p;
     }
-    return make(this.choose([['smash', 4 * a + 1], ['drop', 3], ['clear', 2], ['cut', 2], ['drive', 1.5], ['flick', 1]]), 175);
+    return null;
+  }
+
+  /** 为某一招算出「什么时候、跑到哪儿」去打；够不到就返回 null */
+  private planFor(me: Player, s: Shuttle, id: ShotId, relY?: number): Plan | null {
+    const shot = this.resolve(id);
+    if ((this.cool?.get(shot) ?? 0) > 0) return null; // 还在冷却
+    const def = SHOT_BY_ID[shot];
+    // 击球点高度：别等太高 —— 不打跳杀的话，肩膀以上的球根本够不到
+    const maxRy = shot === 'jumpSmash' ? 430 : 250;
+    const ideal = def.zone[0] + (def.zone[1] - def.zone[0]) * 0.62;
+    const ry = clamp(relY ?? ideal, 12, maxRy);
+    const r = predict(s, { atY: GROUND - ry, maxT: 3.3, wrap: this.meme });
+    // 这个高度已经错过了（球早就掉到下面去了）
+    if (Math.abs(r.y - (GROUND - ry)) > 26) return null;
+    if ((r.x - NET_X) * me.facing > -20) return null; // 球不会落到自己半场
+    const x = clamp(r.x + rand(-this.cfg.err, this.cfg.err), me.minX, me.maxX);
+    // 跑得到吗
+    const reach = r.t * PLAYER.speed * this.cfg.speed * 0.92 + 46;
+    if (Math.abs(x - me.x) > reach) return null;
+    return {
+      shot,
+      x,
+      y: r.y,
+      t: r.t,
+      stamp: this.clock,
+      charge: def.charge ? rand(0.4, def.charge) : undefined,
+    };
+  }
+
+  /**
+   * 给一招打分。像运动员那样综合考虑：
+   * 空档在哪（对手要跑多远）、自己在哪、这球有多高、上一拍用的什么。
+   */
+  private rateShot(
+    id: ShotId,
+    me: Player,
+    opp: Player,
+    court: CourtDef,
+    ctx: { near: boolean; deep: boolean; rel: number; fastIncoming: boolean },
+  ): number {
+    const def = SHOT_BY_ID[id];
+    const land = landingX(me.side, def.depth, court);
+    // 1) 空档：让对手跑起来（权重别太大，不然永远只打同一个角）
+    let score = Math.min(Math.abs(opp.x - land), 700) * 0.28;
+
+    // 2) 对手站位：他压上来就推底线，他退到底线就放网前
+    const oppNetDist = Math.abs(opp.x - NET_X);
+    if (oppNetDist < 250) score += def.depth > 0.72 ? 52 : -30;
+    else if (oppNetDist > 470) score += def.depth < 0.34 ? 52 : -12;
+
+    // 3) 这球有多高，决定能组织什么球路
+    if (ctx.rel > 300) {
+      if (id === 'smash') score += 24 + this.cfg.attack * 26;
+      if (id === 'jumpSmash') score += this.cfg.attack * 34 - 26;
+      if (id === 'drop' || id === 'cut') score += 18;
+      if (id === 'clear') score += 10;
+      if (id === 'net' || id === 'lift') score -= 14;
+    } else if (ctx.rel < 150) {
+      if (id === 'net' || id === 'lift') score += 22;
+      if (id === 'drive') score += 10;
+      if (id === 'smash' || id === 'jumpSmash') score -= 40;
+    }
+
+    // 4) 自己的位置：网前别抡重杀，后场别硬放小球
+    if (ctx.near && (id === 'jumpSmash' || id === 'smash' || id === 'clear')) score -= 55;
+    if (ctx.deep && (id === 'net' || id === 'flick')) score -= 45;
+
+    // 5) 防守球先求稳
+    if (ctx.fastIncoming) score += id === 'lift' ? 50 : id === 'drive' ? 25 : -20;
+
+    // 6) 变化：别连着打同一招，也别反复用同一个套路
+    if (id === this.lastShot) score -= 105;
+    if (id === this.prevShot) score -= 26;
+    score -= this.history.filter((h) => h === id).length * 26;
+
+    // 一点随机，看起来才像人
+    return score + rand(-18, 18);
   }
 }
